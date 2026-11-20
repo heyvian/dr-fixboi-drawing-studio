@@ -144,6 +144,16 @@
   $('modeDraw').onclick = () => mode !== 'draw' && setMode('draw');
   $('navToDrawing').onclick = () => setMode('draw', true);
   $('navExtents').onclick = () => viewer.zoomExtents();
+  // "Set orbit centre" arms the next click on the 3D view; it disarms itself once a point is picked.
+  if (viewer.ok) {
+    const setFocus = $('navSetFocus');
+    viewer.onPick = () => setFocus.setAttribute('aria-pressed', 'false');
+    setFocus.onclick = () => {
+      const on = setFocus.getAttribute('aria-pressed') !== 'true';
+      setFocus.setAttribute('aria-pressed', String(on));
+      viewer.setPicking(on);
+    };
+  }
   for (const button of document.querySelectorAll('.nav-views button'))
     button.onclick = () => viewer.preset(button.dataset.view);
   $('navStatus').textContent = 'Frame the part of the model you want to draw, then choose Draw this view.';

@@ -73,6 +73,7 @@
               <li><strong>Drag</strong> orbit</li>
               <li><strong>Right-drag</strong> or <strong>Shift-drag</strong> pan</li>
               <li><strong>Wheel</strong> zoom to the cursor</li>
+              <li><strong>Double-click</strong> set the orbit centre (or use <strong>Set orbit centre</strong>)</li>
               <li><strong>Arrows</strong> pan, <strong>+ −</strong> zoom, <strong>Home</strong> extents</li>
             </ul>
           </div>
@@ -239,6 +240,9 @@
           <div class="drawing-toolbar">
             <button type="button" id="navExtents" title="Fit the whole model in the window (Home)">
               Zoom extents
+            </button>
+            <button type="button" id="navSetFocus" aria-pressed="false" title="Click a point in the model to orbit around it (double-click also works)">
+              Set orbit centre
             </button>
             <span class="nav-views" role="group" aria-label="Standard views">
               <button type="button" data-view="iso">Axo</button>

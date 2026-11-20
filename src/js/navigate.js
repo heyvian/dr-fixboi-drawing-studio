@@ -20,6 +20,10 @@ const viewer = (() => {
   const camera = { az: HOME.az, el: HOME.el, target: [0, 0, 0], halfHeight: 10 };
   let revision = 0, // bumps whenever the user moves the camera, so the app can tell it changed
     center = [0, 0, 0],
+    focus = [0, 0, 0], // the orbit centre: orbiting keeps this point still on screen and presets centre on it
+    picking = false, // true while the next click sets the focus
+    onPick = null,
+    marker = null,
     radius = 10,
     buffers = [],
     program = null,
@@ -100,6 +104,7 @@ const viewer = (() => {
     center = lo.map((v, i) => (v + hi[i]) / 2);
     radius = Math.max(Math.hypot(...hi.map((v, i) => v - lo[i])) / 2, 1);
     if (resetView) {
+      focus = [...center];
       camera.az = HOME.az;
       camera.el = HOME.el;
       zoomExtents(false);
@@ -128,25 +133,90 @@ const viewer = (() => {
       shiftY = (minY + maxY) / 2;
     camera.target = center.map((v, i) => v + right[i] * shiftX + up[i] * shiftY);
     camera.halfHeight = Math.max((maxY - minY) / 2, (maxX - minX) / 2 / aspect(), 0.01) * 1.08;
+    focus = [...center]; // extents also puts the orbit centre back in the middle of the model
     if (count) revision++;
     draw();
   }
 
-  // Jump to a standard view and frame the whole model in it.
+  // Jump to a standard view, turning about the focus point and centring it. The zoom is kept.
   function preset(name) {
     Object.assign(camera, PRESETS[name]);
-    zoomExtents();
+    camera.target = [...focus];
+    revision++;
+    draw();
   }
 
   const basisNow = () => orbitBasis(camera);
 
-  // Rotate the model around the target. Dragging right turns the model with the cursor.
+  // Rotate the model around the focus point. Dragging right turns the model with the cursor.
+  // The focus keeps its position in the window, so the camera target is recomputed afterwards.
   function orbit(dx, dy) {
+    const before = basisNow(),
+      offset = focus.map((v, i) => v - camera.target[i]),
+      x = dot(offset, before.right),
+      y = dot(offset, before.up);
     camera.az += dx * 0.007;
     camera.el = clamp(camera.el + dy * 0.007, -TOP, TOP);
+    const after = basisNow();
+    camera.target = focus.map((v, i) => v - after.right[i] * x - after.up[i] * y);
     revision++;
     draw();
   }
+
+  // --- Focus picking ------------------------------------------------------------------------------
+  // Find the model point under a window position ((nx, ny) in -1..1). Casts a ray along the view
+  // direction against the solid and glass triangles and takes the nearest hit; if it misses the
+  // model it falls back to the plane through the model centre that faces the camera.
+  function pointAt(nx, ny) {
+    const { right, up, back } = basisNow(),
+      ratio = aspect(),
+      origin = camera.target.map((v, i) => v + right[i] * nx * camera.halfHeight * ratio + up[i] * ny * camera.halfHeight),
+      dir = back.map((v) => -v),
+      start = origin.map((v, i) => v + back[i] * radius * 100);
+    let best = Infinity;
+    for (const { key, data } of buffers) {
+      if (key === 'lines') continue;
+      for (let i = 0; i + 29 < data.length; i += 30) {
+        const a = [data[i], data[i + 1], data[i + 2]],
+          e1 = [data[i + 10] - a[0], data[i + 11] - a[1], data[i + 12] - a[2]],
+          e2 = [data[i + 20] - a[0], data[i + 21] - a[1], data[i + 22] - a[2]],
+          p = cross(dir, e2),
+          det = dot(e1, p);
+        if (Math.abs(det) < 1e-12) continue;
+        const s = start.map((v, k) => v - a[k]),
+          u = dot(s, p) / det;
+        if (u < 0 || u > 1) continue;
+        const q = cross(s, e1),
+          v = dot(dir, q) / det;
+        if (v < 0 || u + v > 1) continue;
+        const t = dot(e2, q) / det;
+        if (t > 0 && t < best) best = t;
+      }
+    }
+    if (Number.isFinite(best)) return start.map((v, i) => v + dir[i] * best);
+    const t = dot(start.map((v, i) => v - center[i]), back);
+    return start.map((v, i) => v + dir[i] * t);
+  }
+
+  // Make the point under a window position the orbit centre.
+  function setFocusAt(nx, ny) {
+    focus = pointAt(nx, ny);
+    picking = false;
+    canvas.style.cursor = '';
+    onPick?.();
+    draw();
+  }
+
+  // Arm or disarm "the next click sets the focus".
+  function setPicking(on) {
+    picking = on;
+    canvas.style.cursor = on ? 'crosshair' : '';
+  }
+
+  const toWindow = (event) => {
+    const box = canvas.getBoundingClientRect();
+    return [((event.clientX - box.left) / box.width) * 2 - 1, 1 - ((event.clientY - box.top) / box.height) * 2];
+  };
 
   // Slide the view across the screen plane by a number of CSS pixels.
   function pan(dx, dy) {
@@ -222,13 +292,30 @@ const viewer = (() => {
       gl.drawArrays(buffer.mode, 0, buffer.count);
     }
     gl.depthMask(true);
+    placeMarker(right, up);
+  }
+
+  // A small crosshair over the canvas that shows where the focus point is.
+  function placeMarker(right, up) {
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.className = 'nav-focus';
+      marker.title = 'Orbit centre';
+      canvas.parentElement.appendChild(marker);
+    }
+    const offset = focus.map((v, i) => v - camera.target[i]),
+      x = dot(offset, right) / (camera.halfHeight * aspect()),
+      y = dot(offset, up) / camera.halfHeight;
+    marker.style.left = `${((x + 1) / 2) * 100}%`;
+    marker.style.top = `${((1 - y) / 2) * 100}%`;
+    marker.hidden = Math.abs(x) > 1 || Math.abs(y) > 1;
   }
   new ResizeObserver(draw).observe(canvas);
 
   // --- Input ------------------------------------------------------------------------------------
   let drag = null;
   canvas.addEventListener('pointerdown', (event) => {
-    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, pan: event.button !== 0 || event.shiftKey };
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, pan: event.button !== 0 || event.shiftKey };
     canvas.setPointerCapture(event.pointerId);
     canvas.focus({ preventScroll: true });
   });
@@ -242,10 +329,14 @@ const viewer = (() => {
     else orbit(dx, dy);
   });
   const endDrag = (event) => {
-    if (drag?.id === event.pointerId) drag = null;
+    if (drag?.id !== event.pointerId) return;
+    // A click (not a drag) while "Set focus" is armed picks the point under the cursor.
+    if (picking && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) setFocusAt(...toWindow(event));
+    drag = null;
   };
   canvas.addEventListener('pointerup', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('dblclick', (event) => setFocusAt(...toWindow(event)));
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
   canvas.addEventListener(
     'wheel',
@@ -277,6 +368,15 @@ const viewer = (() => {
     zoomExtents,
     preset,
     redraw: draw,
+    setPicking,
+    set onPick(fn) {
+      onPick = fn;
+    },
+    get focus() {
+      return [...focus];
+    },
+    pointAt,
+    setFocusAt,
     get revision() {
       return revision;
     },

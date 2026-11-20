@@ -30,6 +30,30 @@ const { chromium } = require('playwright-core');
   await page.mouse.wheel(0, -600);
   await page.waitForTimeout(300);
   await shot('nav-moved');
+
+  // Orbit centre: double-click a point, then orbiting keeps it still on screen and a preset centres it.
+  const focusBefore = await page.evaluate(() => viewer.focus);
+  await page.mouse.dblclick(canvas.x + canvas.width * 0.7, canvas.y + canvas.height * 0.4);
+  const focusAfter = await page.evaluate(() => viewer.focus);
+  assert.notDeepStrictEqual(focusAfter, focusBefore, 'double-click sets a new orbit centre');
+  const markerAt = () => page.evaluate(() => {
+    const m = document.querySelector('.nav-focus');
+    return [parseFloat(m.style.left), parseFloat(m.style.top)];
+  });
+  await page.waitForTimeout(200);
+  const markerBefore = await markerAt();
+  await page.mouse.move(canvas.x + 200, canvas.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 300, canvas.y + 230, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const markerOrbited = await markerAt();
+  assert.ok(Math.abs(markerOrbited[0] - markerBefore[0]) < 0.5 && Math.abs(markerOrbited[1] - markerBefore[1]) < 0.5, 'orbit centre stays still on screen');
+  await page.click('.nav-views [data-view=top]');
+  await page.waitForTimeout(200);
+  const markerPreset = await markerAt();
+  assert.ok(Math.abs(markerPreset[0] - 50) < 0.5 && Math.abs(markerPreset[1] - 50) < 0.5, 'standard views centre on the orbit centre');
+  await shot('nav-focus');
   await page.click('#modeDraw');
   await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3, null, { timeout: 30000 });
   assert.strictEqual(await page.inputValue('#drawingView'), 'nav', 'drawing uses the 3D view');

@@ -111,6 +111,14 @@
   background: #f4f7f2; border: 1px solid var(--line); touch-action: none; }
 #navCanvas:active { cursor: grabbing; }
 #navCanvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Crosshair marking the orbit centre; clicks pass through to the canvas. */
+.nav-focus { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; pointer-events: none;
+  border: 2px solid #c0392b; border-radius: 50%; box-sizing: border-box; }
+.nav-focus::before, .nav-focus::after { content: ""; position: absolute; background: #c0392b; }
+.nav-focus::before { left: 50%; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; }
+.nav-focus::after { top: 50%; left: -5px; right: -5px; height: 2px; margin-top: -1px; }
+.nav-focus[hidden] { display: none; }
+#navSetFocus[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
 .nav-keys { margin: 4px 0 12px; padding-left: 18px; }
 /* In 3D mode the control column keeps only the help text and the layer list. */
 .drawing-workspace[data-mode=nav] .drawing-controls > :not(.keep-in-nav):not(.nav-only):not(h2) { display: none; }

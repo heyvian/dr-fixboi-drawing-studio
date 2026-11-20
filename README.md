@@ -9,7 +9,7 @@ Instead of the lab's generated geometry, it **attempts to import Rhino `.3dm` fi
 Open `index.html` in a browser (no build step), or run `npm install && npm run serve` and visit http://localhost:8080.
 
 1. Click **Open Rhino file…** (or drag a `.3dm` / `.obj` onto the page), or **Load sample**.
-2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo/Plan/N/E/S/W buttons for standard views. The 3D view is orthographic, so it matches the drawing projection.
+2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo/Plan/N/E/S/W buttons for standard views. Double-click a point (or use **Set orbit centre** and click) to make it the orbit centre, marked by a red crosshair: orbiting turns around it and the standard-view buttons centre on it, keeping your zoom. **Zoom extents** resets the centre to the middle of the model. The 3D view is orthographic, so it matches the drawing projection.
 3. Choose **Draw this view** (or the **Drawing** tab). The drawing opens framed on exactly what you saw, with its view set to **From 3D view**. Moving, scaling or nudging the sheet never changes the 3D view, and going back to 3D keeps its own camera.
 4. In Drawing, **Use 3D view** re-takes the current 3D camera as the base (resetting any sheet nudging). Pick a view, rendering mode, clipping planes and line weights.
 5. **Export SVG** or **Print / PDF**.
