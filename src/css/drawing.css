@@ -106,7 +106,11 @@
 .nav-stage[hidden], .nav-only[hidden] { display: none; }
 .nav-stage .hint { margin: 0; }
 .nav-views, .nav-compass { display: inline-flex; gap: 4px; }
-.nav-compass[hidden] { display: none; }
+.nav-compass[hidden], .nav-axo-menu[hidden] { display: none; }
+/* The axo compass drops down under the Axo button while an axonometric view is showing. */
+.nav-axo { position: relative; display: inline-block; }
+.nav-axo-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; display: flex; gap: 6px; align-items: center;
+  padding: 6px 8px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.15); white-space: nowrap; }
 .nav-label { font-size: 0.8rem; color: var(--muted, #5b665f); align-self: center; }
 .nav-canvas-frame { flex: 1; min-height: 320px; position: relative; }
 #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab;

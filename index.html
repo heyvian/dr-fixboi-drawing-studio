@@ -259,7 +259,13 @@
             </button>
             <span class="nav-label">View</span>
             <span class="nav-views" role="group" aria-label="Standard views">
-              <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
+              <span class="nav-axo">
+                <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
+                <span class="nav-axo-menu" id="navAxoGroup">
+                  <span class="nav-label">Axo from</span>
+                  <span class="nav-compass" id="navAxoCompass" role="group" aria-label="Axonometric view from compass point"></span>
+                </span>
+              </span>
               <button type="button" data-view="top">Plan</button>
             </span>
             <span class="nav-label">Elevation</span>
@@ -268,10 +274,6 @@
               <button type="button" data-view="east" title="Elevation looking at the east face">E</button>
               <button type="button" data-view="south" title="Elevation looking at the south face">S</button>
               <button type="button" data-view="west" title="Elevation looking at the west face">W</button>
-            </span>
-            <span class="nav-compass" id="navAxoGroup">
-              <span class="nav-label">Axo from</span>
-              <span class="nav-compass" id="navAxoCompass" role="group" aria-label="Axonometric view from compass point"></span>
             </span>
             <button type="button" class="primary" id="navToDrawing">Draw this view</button>
           </div>

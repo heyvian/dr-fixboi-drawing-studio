@@ -175,7 +175,7 @@
       viewer.setPicking(on);
     };
   }
-  for (const button of document.querySelectorAll('.nav-views button'))
+  for (const button of document.querySelectorAll('[data-view]'))
     button.onclick = () => viewer.preset(button.dataset.view);
   $('navStatus').textContent = 'Frame the part of the model you want to draw, then choose Draw this view.';
   if (!viewer.ok) $('modeNav').hidden = $('modeDraw').hidden = true;
