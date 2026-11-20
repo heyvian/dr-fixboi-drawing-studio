@@ -105,7 +105,8 @@
 .nav-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 8px; }
 .nav-stage[hidden], .nav-only[hidden] { display: none; }
 .nav-stage .hint { margin: 0; }
-.nav-views { display: inline-flex; gap: 4px; }
+.nav-views, .nav-compass { display: inline-flex; gap: 4px; }
+.nav-label { font-size: 0.8rem; color: var(--muted, #5b665f); align-self: center; }
 .nav-canvas-frame { flex: 1; min-height: 320px; position: relative; }
 #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab;
   background: #f4f7f2; border: 1px solid var(--line); touch-action: none; }
@@ -118,8 +119,13 @@
 .nav-focus::before { left: 50%; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; }
 .nav-focus::after { top: 50%; left: -5px; right: -5px; height: 2px; margin-top: -1px; }
 .nav-focus[hidden] { display: none; }
-#navSetFocus[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
+#navSetFocus[aria-pressed=true], #navAxoCompass button[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
 .nav-keys { margin: 4px 0 12px; padding-left: 18px; }
+.nav-lines { border: 1px solid var(--line); border-radius: 4px; margin: 0 0 12px; padding: 6px 10px 8px; display: grid; gap: 4px; }
+.nav-lines label { display: flex; gap: 6px; align-items: center; font-size: 0.85rem; }
+.nav-lines .nav-angle { padding-left: 22px; }
+.nav-lines .nav-angle input { flex: 1; min-width: 0; }
+.nav-lines .hint { margin: 4px 0 0; }
 /* In 3D mode the control column keeps only the help text and the layer list. */
 .drawing-workspace[data-mode=nav] .drawing-controls > :not(.keep-in-nav):not(.nav-only):not(h2) { display: none; }
 .drawing-workspace[data-mode=draw] .nav-only { display: none; }

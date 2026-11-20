@@ -146,6 +146,23 @@
   $('navExtents').onclick = () => viewer.zoomExtents();
   // "Set orbit centre" arms the next click on the 3D view; it disarms itself once a point is picked.
   if (viewer.ok) {
+    for (const box of document.querySelectorAll('#navLines [data-line]'))
+      box.onchange = () => viewer.setLines({ [box.dataset.line]: box.checked });
+    $('navCreaseAngle').oninput = (event) => {
+      $('navCreaseOut').textContent = `${event.target.value}°`;
+      viewer.setLines({ creaseAngle: Number(event.target.value) });
+    };
+    // Axo compass: eight buttons for the direction the axonometric is viewed from.
+    const axoButtons = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].map((label, index) => {
+      const button = Object.assign(document.createElement('button'), { type: 'button', textContent: label });
+      button.title = `Axonometric viewed from the ${label}`;
+      button.onclick = () => viewer.axo(index);
+      $('navAxoCompass').append(button);
+      return button;
+    });
+    const syncAxo = () => axoButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(viewer.activeAxo === index)));
+    viewer.onMove = syncAxo;
+    syncAxo();
     const setFocus = $('navSetFocus');
     viewer.onPick = () => setFocus.setAttribute('aria-pressed', 'false');
     setFocus.onclick = () => {

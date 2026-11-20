@@ -24,6 +24,14 @@ const viewer = (() => {
     picking = false, // true while the next click sets the focus
     onPick = null,
     marker = null,
+    lastAxo = 5, // compass index of the most recent axo view (default south-west)
+    activeAxo = 5, // the axo view currently shown, or null once the camera has moved elsewhere
+    onMove = null,
+    // Which linework to show. Edges come from the triangle meshes; curves are the imported line objects.
+    lineOptions = { curves: true, objects: true, open: true, creases: true, silhouettes: true, creaseAngle: 30 },
+    edges = [], // every mesh edge with the normals/colours of the faces that share it (see buildEdges)
+    edgeBuffer = { id: null, count: 0 },
+    edgeKey = '',
     radius = 10,
     buffers = [],
     program = null,
@@ -35,11 +43,12 @@ const viewer = (() => {
   // Positions are projected with the same right/up/back axes the drawing uses (orbitBasis).
   const vertexSource = `
     attribute vec3 p; attribute vec3 n; attribute vec4 c;
-    uniform vec3 uRight, uUp, uBack, uTarget; uniform vec2 uHalf; uniform float uDepth;
+    uniform vec3 uRight, uUp, uBack, uTarget; uniform vec2 uHalf; uniform float uDepth, uBias;
     varying vec3 vN; varying vec4 vC;
     void main() {
       vec3 d = p - uTarget;
-      gl_Position = vec4(dot(d, uRight) / uHalf.x, dot(d, uUp) / uHalf.y, -dot(d, uBack) / uDepth, 1.0);
+      // uBias nudges linework toward the camera so edges sit on top of the faces they bound
+      gl_Position = vec4(dot(d, uRight) / uHalf.x, dot(d, uUp) / uHalf.y, -dot(d, uBack) / uDepth - uBias, 1.0);
       vN = n; vC = c;
     }`,
     fragmentSource = `
@@ -75,7 +84,7 @@ const viewer = (() => {
     n: gl.getAttribLocation(program, 'n'),
     c: gl.getAttribLocation(program, 'c')
   };
-  for (const name of ['uRight', 'uUp', 'uBack', 'uTarget', 'uHalf', 'uDepth', 'uLight', 'uLit', 'uAlpha'])
+  for (const name of ['uRight', 'uUp', 'uBack', 'uTarget', 'uHalf', 'uDepth', 'uBias', 'uLight', 'uLit', 'uAlpha'])
     locations[name] = gl.getUniformLocation(program, name);
 
   // --- Model data --------------------------------------------------------------------------------
@@ -103,12 +112,91 @@ const viewer = (() => {
     if (!buffers.length) lo.fill(-1), hi.fill(1);
     center = lo.map((v, i) => (v + hi[i]) / 2);
     radius = Math.max(Math.hypot(...hi.map((v, i) => v - lo[i])) / 2, 1);
+    edges = buildEdges(buffers.filter((item) => item.key !== 'lines').map((item) => item.data), radius * 1e-6);
+    edgeKey = '';
     if (resetView) {
       focus = [...center];
+      lastAxo = activeAxo = 5;
       camera.az = HOME.az;
       camera.el = HOME.el;
       zoomExtents(false);
     } else draw();
+  }
+
+  // --- Linework -----------------------------------------------------------------------------------
+  // Weld the triangles of every mesh and collect each unique edge together with the unit normal and
+  // colour of the faces that share it. Classification then needs no further geometry work:
+  //   1 face            -> open edge (a boundary of a surface or an unclosed solid)
+  //   3+ faces          -> junction between objects, shown with the object edges
+  //   2 faces, new colour -> object edge (where one material/layer meets another)
+  //   2 faces, folded   -> crease when the faces differ by at least the crease angle
+  //   2 faces, one facing the camera and one away -> silhouette (re-evaluated whenever the view turns)
+  function buildEdges(datas, tolerance) {
+    const ids = new Map(),
+      points = [],
+      found = new Map(),
+      vertexId = (data, at) => {
+        const key = [0, 1, 2].map((k) => Math.round(data[at + k] / tolerance)).join(',');
+        if (!ids.has(key)) ids.set(key, points.push([data[at], data[at + 1], data[at + 2]]) - 1);
+        return ids.get(key);
+      };
+    for (const data of datas)
+      for (let i = 0; i + 29 < data.length; i += 30) {
+        const corner = [vertexId(data, i), vertexId(data, i + 10), vertexId(data, i + 20)];
+        if (new Set(corner).size < 3) continue;
+        const [p, q, r] = corner.map((id) => points[id]),
+          normal = cross(q.map((v, k) => v - p[k]), r.map((v, k) => v - p[k])),
+          length = Math.hypot(...normal);
+        if (length < 1e-12) continue;
+        const face = { n: normal.map((v) => v / length), colour: [6, 7, 8].map((k) => Math.round(data[i + k] * 50)).join() };
+        for (let k = 0; k < 3; k++) {
+          const a = corner[k],
+            b = corner[(k + 1) % 3],
+            key = Math.min(a, b) * 4194304 + Math.max(a, b);
+          if (!found.has(key)) found.set(key, { a: points[a], b: points[b], faces: [] });
+          found.get(key).faces.push(face);
+        }
+      }
+    return [...found.values()];
+  }
+
+  // Rebuild the GPU buffer of mesh-edge linework for the current options and view direction.
+  // Skipped when nothing relevant changed, so panning and zooming cost nothing.
+  function updateEdges(back) {
+    const { objects, open, creases, silhouettes, creaseAngle } = lineOptions,
+      key = [objects, open, creases, silhouettes, creaseAngle, silhouettes ? back.map((v) => v.toFixed(5)) : ''].join();
+    if (key === edgeKey) return;
+    edgeKey = key;
+    const out = [],
+      limit = Math.cos((creaseAngle * Math.PI) / 180),
+      push = (edge) => out.push(...edge.a, 0, 1, 0, 0, 0, 0, 1, ...edge.b, 0, 1, 0, 0, 0, 0, 1);
+    for (const edge of edges) {
+      const { faces } = edge;
+      let show = false;
+      if (faces.length === 1) show = open;
+      else if (faces.length > 2) show = objects;
+      else {
+        const [f, g] = faces,
+          fold = dot(f.n, g.n);
+        // Winding can differ between meshes, so compare the folds without regard to direction.
+        show =
+          (objects && f.colour !== g.colour) ||
+          (creases && Math.abs(fold) < limit) ||
+          (silhouettes && dot(f.n, back) * dot(g.n, back) < -1e-9);
+      }
+      if (show) push(edge);
+    }
+    if (!edgeBuffer.id) edgeBuffer.id = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeBuffer.id);
+    gl.bufferData(gl.ARRAY_BUFFER, Float32Array.from(out), gl.DYNAMIC_DRAW);
+    edgeBuffer.count = out.length / 10;
+  }
+
+  // Change which linework is shown. Accepts any subset of the lineOptions fields.
+  function setLines(options) {
+    Object.assign(lineOptions, options);
+    edgeKey = '';
+    draw();
   }
 
   // --- Camera -----------------------------------------------------------------------------------
@@ -140,9 +228,24 @@ const viewer = (() => {
 
   // Jump to a standard view, turning about the focus point and centring it. The zoom is kept.
   function preset(name) {
+    if (name === 'iso') return axo();
     Object.assign(camera, PRESETS[name]);
+    activeAxo = null;
     camera.target = [...focus];
     revision++;
+    onMove?.();
+    draw();
+  }
+
+  // Axonometric view from one of the eight compass points (0 = N, 1 = NE ... 7 = NW), using the
+  // same numbering as the drawing's compass. The Axo button reuses the last one chosen.
+  function axo(index = lastAxo) {
+    lastAxo = activeAxo = index;
+    camera.az = Math.PI / 2 + (index * Math.PI) / 4;
+    camera.el = HOME.el;
+    camera.target = [...focus];
+    revision++;
+    onMove?.();
     draw();
   }
 
@@ -157,6 +260,8 @@ const viewer = (() => {
       y = dot(offset, before.up);
     camera.az += dx * 0.007;
     camera.el = clamp(camera.el + dy * 0.007, -TOP, TOP);
+    activeAxo = null;
+    onMove?.();
     const after = basisNow();
     camera.target = focus.map((v, i) => v - after.right[i] * x - after.up[i] * y);
     revision++;
@@ -277,19 +382,30 @@ const viewer = (() => {
     gl.uniform2f(locations.uHalf, camera.halfHeight * ratio, camera.halfHeight);
     gl.uniform1f(locations.uDepth, (radius + distance) * 1.5 + 1);
     gl.uniform3fv(locations.uLight, LIGHT);
-    // Solids first, then lines, then see-through glass so it blends over what is behind it.
-    for (const key of ['solid', 'lines', 'glass']) {
-      const buffer = buffers.find((item) => item.key === key);
-      if (!buffer) continue;
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer.id);
+    updateEdges(back);
+    // Solids first, then linework, then see-through glass so it blends over what is behind it.
+    const part = (key) => buffers.find((item) => item.key === key),
+      layers = [
+        { ...part('solid'), lit: 1, alpha: 1, bias: 0 },
+        { ...(lineOptions.curves ? part('lines') : null), lit: 0, alpha: 1, bias: 1 },
+        { id: edgeBuffer.id, mode: gl.LINES, count: edgeBuffer.count, lit: 0, alpha: 1, bias: 1 },
+        { ...part('glass'), lit: 1, alpha: 0.35, bias: 0, glass: true }
+      ];
+    // Lines are pulled toward the camera by a small fraction of the view height, which keeps them
+    // from flickering against the faces they bound without showing through walls.
+    const bias = (camera.halfHeight * 0.004) / ((radius + distance) * 1.5 + 1);
+    for (const layer of layers) {
+      if (!layer.id || !layer.count) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, layer.id);
       for (const [name, size, offset] of [['p', 3, 0], ['n', 3, 3], ['c', 4, 6]]) {
         gl.enableVertexAttribArray(locations[name]);
         gl.vertexAttribPointer(locations[name], size, gl.FLOAT, false, 40, offset * 4);
       }
-      gl.uniform1f(locations.uLit, key === 'lines' ? 0 : 1);
-      gl.uniform1f(locations.uAlpha, key === 'glass' ? 0.35 : 1);
-      gl.depthMask(key !== 'glass');
-      gl.drawArrays(buffer.mode, 0, buffer.count);
+      gl.uniform1f(locations.uLit, layer.lit);
+      gl.uniform1f(locations.uAlpha, layer.alpha);
+      gl.uniform1f(locations.uBias, layer.bias * bias);
+      gl.depthMask(!layer.glass);
+      gl.drawArrays(layer.mode, 0, layer.count);
     }
     gl.depthMask(true);
     placeMarker(right, up);
@@ -369,6 +485,20 @@ const viewer = (() => {
     preset,
     redraw: draw,
     setPicking,
+    axo,
+    set onMove(fn) {
+      onMove = fn;
+    },
+    get activeAxo() {
+      return activeAxo;
+    },
+    setLines,
+    get lines() {
+      return { ...lineOptions };
+    },
+    get edgeCount() {
+      return edgeBuffer.count / 2;
+    },
     set onPick(fn) {
       onPick = fn;
     },

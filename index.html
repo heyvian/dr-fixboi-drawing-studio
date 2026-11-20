@@ -76,6 +76,19 @@
               <li><strong>Double-click</strong> set the orbit centre (or use <strong>Set orbit centre</strong>)</li>
               <li><strong>Arrows</strong> pan, <strong>+ −</strong> zoom, <strong>Home</strong> extents</li>
             </ul>
+            <fieldset class="nav-lines" id="navLines">
+              <legend>3D linework</legend>
+              <label><input type="checkbox" data-line="curves" checked /> Curves and wire edges</label>
+              <label><input type="checkbox" data-line="objects" checked /> Object edges (where colours or objects meet)</label>
+              <label><input type="checkbox" data-line="open" checked /> Open edges (surface boundaries)</label>
+              <label><input type="checkbox" data-line="creases" checked /> Creases</label>
+              <label class="nav-angle">Crease angle
+                <input type="range" id="navCreaseAngle" min="5" max="90" step="1" value="30" />
+                <output id="navCreaseOut">30°</output>
+              </label>
+              <label><input type="checkbox" data-line="silhouettes" checked /> Silhouettes</label>
+              <p class="hint">Mesh edges are found from the model's triangles. Intersections between objects are not drawn.</p>
+            </fieldset>
           </div>
           <label class="drawing-view-field"
             >Sheet title
@@ -245,13 +258,15 @@
               Set orbit centre
             </button>
             <span class="nav-views" role="group" aria-label="Standard views">
-              <button type="button" data-view="iso">Axo</button>
+              <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
               <button type="button" data-view="top">Plan</button>
               <button type="button" data-view="north">N</button>
               <button type="button" data-view="east">E</button>
               <button type="button" data-view="south">S</button>
               <button type="button" data-view="west">W</button>
             </span>
+            <span class="nav-label">Axo from</span>
+            <span class="nav-compass" id="navAxoCompass" role="group" aria-label="Axonometric view from compass point"></span>
             <button type="button" class="primary" id="navToDrawing">Draw this view</button>
           </div>
           <p class="hint" id="navStatus" role="status"></p>
