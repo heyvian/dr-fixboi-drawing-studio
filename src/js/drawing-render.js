@@ -38,7 +38,8 @@ function renderDrawing(
   placement,
   hybrid,
   pens,
-  region = null
+  region = null,
+  frame = null
 ) {
   const width = region?.width ?? paper.width * DRAWING_PIXELS_PER_INCH,
     height = region?.height ?? paper.height * DRAWING_PIXELS_PER_INCH,
@@ -66,6 +67,18 @@ function renderDrawing(
     left = top = 0;
     rightEdge = bottom = 1;
   }
+  // A frame (from the 3D view) replaces the model bounds: centre on its target and make sure
+  // everything that was visible in the 3D window fits the sheet.
+  if (frame) {
+    const aspect = (width - margin * 2) / drawingHeight,
+      halfWidth = Math.max(frame.halfWidth, frame.halfHeight * aspect),
+      centerX = dot(frame.target, right),
+      centerY = -dot(frame.target, up);
+    left = centerX - halfWidth;
+    rightEdge = centerX + halfWidth;
+    top = centerY - halfWidth / aspect;
+    bottom = centerY + halfWidth / aspect;
+  }
   const available = Math.min(
       (width - margin * 2) / (rightEdge - left),
       drawingHeight / (bottom - top)
@@ -80,7 +93,7 @@ function renderDrawing(
     centeredY = margin + drawingHeight / 2 - ((top + bottom) * scale) / 2,
     groundY = margin + drawingHeight - 5 * pixelsPerMillimetre,
     originY =
-      (placement.ground && Math.abs(Math.cos(camera.el)) > 0.01
+      (placement.ground && !frame && Math.abs(Math.cos(camera.el)) > 0.01
         ? groundY - ground * scale
         : centeredY) +
       placement.y * pixelsPerMillimetre,
@@ -324,6 +337,8 @@ function renderDrawing(
     scale,
     originX,
     originY,
+    midX: (left + rightEdge) / 2,
+    midY: (top + bottom) / 2,
     depth,
     wash,
     exportFills: hybrid

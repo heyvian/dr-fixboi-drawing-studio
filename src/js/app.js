@@ -6,12 +6,33 @@
     dropZone = $('dropZone'),
     fileInput = $('fileInput'),
     controls = $('drawingControls'),
+    workspace = $('drawingsPhase'),
     fileName = $('fileName'),
     layerList = $('layerList'),
     unitSelect = $('unitSelect');
   let current = null, // the model currently drawn
     lastFile = null, // remembered so changing the unit setting can re-read it
-    busy = false;
+    busy = false,
+    mode = 'draw', // 'nav' (3D navigation) or 'draw' (the drawing sheet)
+    appliedRevision = 0; // the 3D camera revision the drawing was last based on
+
+  // Switch between 3D navigation and the drawing sheet. Going to the drawing copies the 3D camera in
+  // as its base when it has moved since (or when 'force' is set); sheet movements never flow back.
+  function setMode(next, force = false) {
+    const snapshot = viewer.ok && next === 'draw' ? viewer.snapshot() : null;
+    mode = next;
+    workspace.dataset.mode = next;
+    $('navStage').hidden = next !== 'nav';
+    $('drawingStage').hidden = next !== 'draw';
+    $('modeNav').setAttribute('aria-pressed', String(next === 'nav'));
+    $('modeDraw').setAttribute('aria-pressed', String(next === 'draw'));
+    if (next === 'nav') viewer.redraw();
+    else if (snapshot) {
+      const moved = viewer.revision !== appliedRevision;
+      appliedRevision = viewer.revision;
+      openDrawingWorkspace.setBase(snapshot, moved || force);
+    }
+  }
 
   // Show a message under the header. 'kind' is '' (info), 'warn' or 'error'; 'lines' are bullet points.
   function say(text, kind = '', lines = []) {
@@ -35,6 +56,12 @@
     fileName.title = label;
     buildLayerList(model);
     openDrawingWorkspace(model, true);
+    if (viewer.ok) {
+      for (const id of ['modeNav', 'modeDraw']) $(id).disabled = false;
+      setMode('nav');
+      viewer.setModel(model, true);
+      appliedRevision = viewer.revision;
+    } else setMode('draw');
     const summary = `${label}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${model.height.toFixed(1)} m tall.`;
     if (model.warnings.length) say(summary, 'warn', model.warnings);
     else say(summary);
@@ -53,6 +80,7 @@
         box.onchange = () => {
           layer.visible = box.checked;
           openDrawingWorkspace(model, false);
+          if (viewer.ok) viewer.setModel(model, false);
         };
         swatch.className = 'swatch';
         swatch.style.background = '#' + layer.color.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
@@ -112,6 +140,15 @@
   }
 
   // Controls
+  $('modeNav').onclick = () => mode !== 'nav' && setMode('nav');
+  $('modeDraw').onclick = () => mode !== 'draw' && setMode('draw');
+  $('navToDrawing').onclick = () => setMode('draw', true);
+  $('navExtents').onclick = () => viewer.zoomExtents();
+  for (const button of document.querySelectorAll('.nav-views button'))
+    button.onclick = () => viewer.preset(button.dataset.view);
+  $('navStatus').textContent = 'Frame the part of the model you want to draw, then choose Draw this view.';
+  if (!viewer.ok) $('modeNav').hidden = $('modeDraw').hidden = true;
+  setMode(viewer.ok ? 'nav' : 'draw');
   for (const id of ['openFile', 'openFileZone']) $(id).onclick = () => fileInput.click();
   for (const id of ['loadSample', 'loadSampleZone']) $(id).onclick = openSample;
   fileInput.onchange = () => {

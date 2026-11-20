@@ -34,7 +34,7 @@ const openDrawingWorkspace = (() => {
       'west',
       'northwest'
     ],
-    viewNames = ['axo', 'plan', 'elevation', 'aligned'];
+    viewNames = ['axo', 'plan', 'elevation', 'nav', 'aligned'];
   footer.setAttribute('fill', '#243c30');
   footer.setAttribute('font-family', 'system-ui, sans-serif');
   footer.setAttribute('font-size', '11');
@@ -72,6 +72,7 @@ const openDrawingWorkspace = (() => {
       placement: { x: 0, y: 0, ground: false }
     },
     sourceModel = null,
+    base = null, // the 3D view snapshot the "From 3D view" drawing is framed from
     geometry = null,
     rendered = null,
     timer = 0,
@@ -170,6 +171,7 @@ const openDrawingWorkspace = (() => {
   function viewCamera() {
     const top = Math.PI / 2 - 1e-7;
     if (settings.view === 'plan') return { az: -Math.PI / 2, el: top };
+    if (settings.view === 'nav' && base) return { az: base.az, el: base.el };
     if (settings.view === 'elevation')
       return { az: Math.PI / 2 + (settings.elevation * Math.PI) / 180, el: 0 };
     const plane = currentPlane();
@@ -509,7 +511,7 @@ const openDrawingWorkspace = (() => {
 
   function render() {
     timer = 0;
-    if (!sourceModel || panel.hidden) return;
+    if (!sourceModel || panel.hidden || $('drawingStage').hidden) return;
     const paper = paperDimensions();
     try {
       // Geometry is welded once per import, layer-visibility change or outline-body setting.
@@ -517,8 +519,9 @@ const openDrawingWorkspace = (() => {
         drawingBodyMode = settings.bodies;
         geometry = drawingGeometry(sourceModel.assemble(), sourceModel);
       }
-      const camera = viewCamera();
-      $('groundDrawing').disabled = Math.abs(Math.cos(camera.el)) <= 0.01;
+      const camera = viewCamera(),
+        fromNav = settings.view === 'nav' && base;
+      $('groundDrawing').disabled = Math.abs(Math.cos(camera.el)) <= 0.01 || Boolean(fromNav);
       if (!allPlans()) floorTiles.replaceChildren();
       rendered = allPlans()
         ? renderFloorSheet(paper, camera)
@@ -531,7 +534,9 @@ const openDrawingWorkspace = (() => {
             settings.glazing,
             settings.placement,
             settings.mode !== 'linework',
-            settings.pens
+            settings.pens,
+            null,
+            fromNav ? base : null
           );
       const { width, height, margin, denominator } = rendered,
         ruleY = height - margin * 1.8,
@@ -578,6 +583,8 @@ const openDrawingWorkspace = (() => {
   function showStatus() {
     status.textContent = placing
       ? 'Click the drawing to place the selected plane.'
+      : settings.view === 'nav' && !allPlans() && !exportButton.disabled
+        ? 'Drawn from your 3D view. Drag to nudge it on the sheet; the 3D view is not affected.'
       : rendered?.cropped
         ? allPlans()
           ? 'Some plans extend past their panels. Use Fit to scale the set.'
@@ -596,7 +603,7 @@ const openDrawingWorkspace = (() => {
     timer = setTimeout(render, 45);
   }
   new ResizeObserver(() => {
-    if (!panel.hidden) resizePaperPreview();
+    if (!panel.hidden && !$('drawingStage').hidden) resizePaperPreview();
   }).observe(paperFrame);
 
   function syncOffset(plane) {
@@ -750,6 +757,7 @@ const openDrawingWorkspace = (() => {
     if (!currentPlane()) settings.selected = settings.planes[0]?.id ?? null;
     const plane = currentPlane();
     if (!plane && settings.view === 'aligned') settings.view = 'axo';
+    if (!base && settings.view === 'nav') settings.view = 'axo';
     $('drawingView').value = settings.view;
     $('drawingStorey').value = settings.storey;
     $('drawingBodies').value = settings.bodies;
@@ -850,9 +858,23 @@ const openDrawingWorkspace = (() => {
     queueDrawing();
   };
   $('drawingScale').onchange = (event) => {
+    keepCenterAtScale(event.target.value);
     settings.scale = event.target.value;
     queueDrawing();
   };
+  // The drawing is placed relative to the model's centre, so a new scale would swing it back to the
+  // middle. Adjust the placement so whatever sits at the sheet centre stays there.
+  function keepCenterAtScale(choice) {
+    const denominator = Number(choice);
+    if (!rendered || allPlans() || !Number.isFinite(rendered.midX) || !denominator) return;
+    const { originX, originY, scale, midX, midY, width, margin, drawingHeight } = rendered,
+      atX = (width / 2 - originX) / scale,
+      atY = (margin + drawingHeight / 2 - originY) / scale,
+      millimetresPerUnit = 1000 / denominator;
+    settings.placement.x = (midX - atX) * millimetresPerUnit;
+    if (!settings.placement.ground || settings.view === 'nav')
+      settings.placement.y = (midY - atY) * millimetresPerUnit;
+  }
   $('drawingGlazing').onchange = (event) => {
     settings.glazing = event.target.checked;
     queueDrawing();
@@ -1201,7 +1223,7 @@ const openDrawingWorkspace = (() => {
   }
 
   // Called by the app with each imported (or re-filtered) model. 'fresh' marks a different file.
-  return (model, fresh = true) => {
+  function load(model, fresh = true) {
     sourceModel = model;
     geometry = null;
     if (fresh) {
@@ -1215,5 +1237,22 @@ const openDrawingWorkspace = (() => {
     stopPlacing();
     syncSettings();
     queueDrawing();
-  };
+  }
+
+  // Remember a 3D view as the drawing's base. 'select' also switches the drawing to it and clears any
+  // sheet nudging, so the drawing starts exactly where the 3D view was left.
+  function setBase(snapshot, select) {
+    base = snapshot;
+    if (select) {
+      settings.view = 'nav';
+      settings.placement = { x: 0, y: 0, ground: false };
+      stopPlacing();
+    }
+    syncSettings();
+    queueDrawing();
+  }
+  $('useNavView').onclick = () => setBase(viewer.snapshot(), true);
+
+  load.setBase = setBase;
+  return load;
 })();

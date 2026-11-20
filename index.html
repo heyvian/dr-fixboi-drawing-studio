@@ -16,6 +16,10 @@
         <h1>Poly Nation Drawings</h1>
         <p class="sub">Orthographic drawings, plans and sections from a Rhino model</p>
       </div>
+      <div class="mode-tabs" role="group" aria-label="Mode">
+        <button type="button" id="modeNav" aria-pressed="true" disabled>3D navigate</button>
+        <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing</button>
+      </div>
       <div class="header-actions">
         <span id="fileName" class="file-name" hidden></span>
         <label class="drawing-view-field">
@@ -59,6 +63,19 @@
       <section id="drawingsPhase" class="drawing-workspace" aria-labelledby="drawingsTitle">
         <aside class="drawing-controls" id="drawingControls" inert>
           <h2 id="drawingsTitle" tabindex="-1">Drawings</h2>
+          <div class="nav-only" id="navHelp">
+            <p class="hint">
+              Move around the model to choose what to draw. Switching to <strong>Drawing</strong> uses
+              this view as the starting point for the drawing; moving the drawing there never changes
+              this view.
+            </p>
+            <ul class="hint nav-keys">
+              <li><strong>Drag</strong> orbit</li>
+              <li><strong>Right-drag</strong> or <strong>Shift-drag</strong> pan</li>
+              <li><strong>Wheel</strong> zoom to the cursor</li>
+              <li><strong>Arrows</strong> pan, <strong>+ −</strong> zoom, <strong>Home</strong> extents</li>
+            </ul>
+          </div>
           <label class="drawing-view-field"
             >Sheet title
             <input id="drawingTitle" type="text" autocomplete="off" />
@@ -69,6 +86,7 @@
               <option value="axo">Axonometric</option>
               <option value="plan">Plan</option>
               <option value="elevation">Elevation</option>
+              <option value="nav">From 3D view</option>
               <option value="aligned" disabled>Aligned to clipping plane</option>
             </select>
           </label>
@@ -96,7 +114,7 @@
             <input id="drawingStorey" type="number" min="1" max="20" step="0.1" />
           </label>
 
-          <details class="calc-details" open>
+          <details class="calc-details keep-in-nav" open>
             <summary>Layers</summary>
             <p class="hint">Untick a layer to leave it out of every drawing.</p>
             <div id="layerList" class="layer-list"></div>
@@ -217,8 +235,36 @@
           </details>
         </aside>
 
-        <div class="drawing-stage">
+        <div class="nav-stage" id="navStage">
           <div class="drawing-toolbar">
+            <button type="button" id="navExtents" title="Fit the whole model in the window (Home)">
+              Zoom extents
+            </button>
+            <span class="nav-views" role="group" aria-label="Standard views">
+              <button type="button" data-view="iso">Axo</button>
+              <button type="button" data-view="top">Plan</button>
+              <button type="button" data-view="north">N</button>
+              <button type="button" data-view="east">E</button>
+              <button type="button" data-view="south">S</button>
+              <button type="button" data-view="west">W</button>
+            </span>
+            <button type="button" class="primary" id="navToDrawing">Draw this view</button>
+          </div>
+          <p class="hint" id="navStatus" role="status"></p>
+          <div class="nav-canvas-frame">
+            <canvas id="navCanvas" tabindex="0" aria-label="3D view of the loaded model"></canvas>
+          </div>
+        </div>
+
+        <div class="drawing-stage" id="drawingStage" hidden>
+          <div class="drawing-toolbar">
+            <button
+              type="button"
+              id="useNavView"
+              title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
+            >
+              Use 3D view
+            </button>
             <label
               >Paper size
               <select id="drawingPaper">
@@ -275,6 +321,7 @@
     <script src="src/js/drawing-core.js"></script>
     <script src="src/js/drawing-render.js"></script>
     <script src="src/js/model-import.js"></script>
+    <script src="src/js/navigate.js"></script>
     <script src="src/js/drawing-ui.js"></script>
     <script src="src/js/app.js"></script>
   </body>

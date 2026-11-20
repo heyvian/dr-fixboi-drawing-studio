@@ -9,7 +9,7 @@
 @media print {
   body.drawings-open { display: block !important; height: auto !important; overflow: visible !important; background: white; }
   body.drawings-open > .app-header, .drawings-open .drawing-controls,
- .drawings-open .drawing-toolbar, .drawings-open #drawingStatus { display: none !important; }
+ .drawings-open .drawing-toolbar, .drawings-open #drawingStatus, .drawings-open .nav-stage { display: none !important; }
   body.drawings-open .drawing-workspace, body.drawings-open .drawing-stage,
  body.drawings-open .drawing-paper { display: block; min-height: 0; background: white; padding: 0; }
   body.drawings-open .drawing-sheet {

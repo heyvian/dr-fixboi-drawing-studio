@@ -74,6 +74,7 @@
 .drawing-plane-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .drawing-plane-actions button { flex: 1; white-space: nowrap; }
 .drawing-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 8px; }
+.drawing-stage[hidden] { display: none; }
 .drawing-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
 .drawing-toolbar label { display: grid; gap: 3px; font-size: 11px; font-weight: 600; }
 .drawing-toolbar select { min-height: 30px; color: var(--ink); font: inherit; }
@@ -94,6 +95,26 @@
   .drawing-workspace { min-height: 75vh; }
   .drawing-paper { min-height: 450px; }
 }
+
+/* 3D navigation stage and the mode switch. */
+.mode-tabs { display: flex; gap: 0; margin-left: 24px; }
+.mode-tabs button { border-radius: 0; }
+.mode-tabs button:first-child { border-radius: 6px 0 0 6px; }
+.mode-tabs button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.mode-tabs button[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
+.nav-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 8px; }
+.nav-stage[hidden], .nav-only[hidden] { display: none; }
+.nav-stage .hint { margin: 0; }
+.nav-views { display: inline-flex; gap: 4px; }
+.nav-canvas-frame { flex: 1; min-height: 320px; position: relative; }
+#navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab;
+  background: #f4f7f2; border: 1px solid var(--line); touch-action: none; }
+#navCanvas:active { cursor: grabbing; }
+#navCanvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-keys { margin: 4px 0 12px; padding-left: 18px; }
+/* In 3D mode the control column keeps only the help text and the layer list. */
+.drawing-workspace[data-mode=nav] .drawing-controls > :not(.keep-in-nav):not(.nav-only):not(h2) { display: none; }
+.drawing-workspace[data-mode=draw] .nav-only { display: none; }
 @media (max-width: 650px) {
   .drawing-workspace { grid-template-columns: 1fr; }
   .drawing-controls { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }

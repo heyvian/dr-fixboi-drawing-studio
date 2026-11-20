@@ -18,8 +18,38 @@ const { chromium } = require('playwright-core');
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
 
   await page.click('#loadSample');
+  // A new model opens in 3D navigation. Orbit and zoom, then draw that view.
+  await page.waitForSelector('#navStage:not([hidden])');
+  await page.waitForTimeout(500);
+  await shot('nav-home');
+  const canvas = await page.locator('#navCanvas').boundingBox();
+  await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + canvas.width / 2 + 120, canvas.y + canvas.height / 2 - 40, { steps: 8 });
+  await page.mouse.up();
+  await page.mouse.wheel(0, -600);
+  await page.waitForTimeout(300);
+  await shot('nav-moved');
+  await page.click('#modeDraw');
   await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3, null, { timeout: 30000 });
-  await shot('sample');
+  assert.strictEqual(await page.inputValue('#drawingView'), 'nav', 'drawing uses the 3D view');
+  await shot('draw-from-nav');
+
+  // Changing scale keeps the framing: the sheet centre must not jump back to the model centre.
+  const sheetBefore = await page.locator('#drawingSheet').innerHTML();
+  await page.selectOption('#drawingScale', { index: 6 });
+  await page.waitForTimeout(600);
+  await shot('draw-rescaled');
+  assert.notStrictEqual(await page.locator('#drawingSheet').innerHTML(), sheetBefore);
+
+  // Going back to 3D keeps its own camera.
+  await page.click('#modeNav');
+  await page.waitForTimeout(300);
+  await shot('nav-again');
+  await page.click('#navExtents');
+  await page.click('#modeDraw');
+  await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3, null, { timeout: 30000 });
+  await page.selectOption('#drawingView', 'axo');
 
   // Toggle the first layer off and on again.
   const box = page.locator('#layerList input[type=checkbox]').first();
