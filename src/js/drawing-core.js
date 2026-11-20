@@ -359,6 +359,16 @@ function drawingPens(saved = {}) {
     adaptToScale: saved?.adaptToScale === true,
     silhouette: saved?.silhouette === true,
     componentOutlines: saved?.componentOutlines === true,
+    // Which mesh edges become strokes; all on with a 10° crease angle matches the original drawings.
+    curves: saved?.curves !== false,
+    silhouettes: saved?.silhouettes !== false,
+    openEdges: saved?.openEdges !== false,
+    creases: saved?.creases !== false,
+    creaseAngle: Number.isFinite(saved?.creaseAngle) ? clamp(Math.round(saved.creaseAngle), 5, 90) : 10,
+    // Camera-distance weights: nearest `distanceFrom`% of the visible depth range keeps the heaviest
+    // pen, the farthest (100 - `distanceTo`)% the lightest; the pens share the span in between.
+    distanceFrom: Number.isFinite(saved?.distanceFrom) ? clamp(Math.round(saved.distanceFrom), 0, 90) : 0,
+    distanceTo: Number.isFinite(saved?.distanceTo) ? clamp(Math.round(saved.distanceTo), 10, 100) : 100,
     paper: paintHex(saved?.paper) || '#ffffff',
     colors: DRAWING_PEN_PRESETS[count].map((_, i) => paintHex(saved?.colors?.[i]) || '#43534c'),
     widths: DRAWING_PEN_PRESETS[count].map((width, i) =>

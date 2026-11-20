@@ -648,6 +648,18 @@ const openDrawingWorkspace = (() => {
     $('drawingAdaptWeights').checked = pens.adaptToScale;
     $('drawingSilhouette').checked = pens.silhouette;
     $('drawingComponentOutlines').checked = pens.componentOutlines;
+    $('drawingCurves').checked = pens.curves;
+    $('drawingOpenEdges').checked = pens.openEdges;
+    $('drawingSilhouettes').checked = pens.silhouettes;
+    $('drawingCreases').checked = pens.creases;
+    $('drawingCreaseAngle').value = pens.creaseAngle;
+    $('drawingCreaseAngle').disabled = !pens.creases;
+    $('drawingCreaseOut').textContent = pens.creaseAngle + '°';
+    $('drawingDistanceFields').hidden = pens.mode !== 'distance';
+    $('drawingDistanceFrom').value = pens.distanceFrom;
+    $('drawingDistanceTo').value = pens.distanceTo;
+    $('drawingDistanceFromOut').textContent = pens.distanceFrom + '%';
+    $('drawingDistanceToOut').textContent = pens.distanceTo + '%';
     const components = $('drawingPenComponents');
     components.hidden = pens.mode !== 'component';
     components.replaceChildren(
@@ -718,6 +730,17 @@ const openDrawingWorkspace = (() => {
     syncPenControls();
     queueDrawing();
   };
+  // The two distance thresholds push each other so they always stay at least 5% apart.
+  for (const [id, key] of [['drawingDistanceFrom', 'distanceFrom'], ['drawingDistanceTo', 'distanceTo']])
+    $(id).oninput = (event) => {
+      const pens = settings.pens,
+        value = Number(event.target.value);
+      pens[key] = value;
+      if (key === 'distanceFrom') pens.distanceTo = Math.max(pens.distanceTo, value + 5);
+      else pens.distanceFrom = Math.min(pens.distanceFrom, value - 5);
+      syncPenControls();
+      queueDrawing();
+    };
   $('drawingPenCount').onchange = (event) => {
     settings.pens = drawingPens({
       ...settings.pens,
@@ -733,6 +756,22 @@ const openDrawingWorkspace = (() => {
   };
   $('drawingAdaptWeights').onchange = (event) => {
     settings.pens.adaptToScale = event.target.checked;
+    queueDrawing();
+  };
+  for (const [id, key] of [
+    ['drawingCurves', 'curves'],
+    ['drawingOpenEdges', 'openEdges'],
+    ['drawingSilhouettes', 'silhouettes'],
+    ['drawingCreases', 'creases']
+  ])
+    $(id).onchange = (event) => {
+      settings.pens[key] = event.target.checked;
+      syncPenControls();
+      queueDrawing();
+    };
+  $('drawingCreaseAngle').oninput = (event) => {
+    settings.pens.creaseAngle = Number(event.target.value);
+    syncPenControls();
     queueDrawing();
   };
   $('drawingSilhouette').onchange = (event) => {

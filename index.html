@@ -165,6 +165,32 @@
                 <option value="profile">Outlines and detail</option>
               </select>
             </label>
+            <div id="drawingDistanceFields" class="drawing-distance">
+              <label class="drawing-view-field"
+                >Heaviest pen until <output id="drawingDistanceFromOut">0%</output>
+                <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" />
+              </label>
+              <label class="drawing-view-field"
+                >Lightest pen from <output id="drawingDistanceToOut">100%</output>
+                <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" />
+              </label>
+              <p class="hint">
+                Percent of the depth from the nearest to the farthest visible line. Lines nearer than the
+                first threshold use the heaviest pen, lines beyond the second the lightest, and the pens
+                share the span between.
+              </p>
+            </div>
+            <div class="nav-lines" role="group" aria-labelledby="drawingEdgesTitle">
+              <strong id="drawingEdgesTitle">Drawn edges</strong>
+              <label><input type="checkbox" id="drawingCurves" /> Curves and wire edges</label>
+              <label><input type="checkbox" id="drawingOpenEdges" /> Open edges (surface boundaries)</label>
+              <label><input type="checkbox" id="drawingSilhouettes" /> Silhouettes</label>
+              <label><input type="checkbox" id="drawingCreases" /> Creases</label>
+              <label class="nav-angle">Crease angle
+                <input type="range" id="drawingCreaseAngle" min="5" max="90" step="1" value="10" />
+                <output id="drawingCreaseOut">10°</output>
+              </label>
+            </div>
             <label class="check"
               ><input id="drawingSilhouette" type="checkbox" aria-describedby="drawingOutlineNote" />
               Overall silhouette</label

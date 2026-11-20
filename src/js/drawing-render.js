@@ -221,27 +221,29 @@ function renderDrawing(
         });
       });
   }
+  const creaseLimit = Math.cos((pens.creaseAngle * Math.PI) / 180);
   for (const { start, end, faces } of geometry.edges) {
     const first = faces[0],
       facing = dot(first.normal, back);
-    const silhouette =
-      faces.length === 1 ||
-      faces.slice(1).some((other) => {
+    const open = faces.length === 1,
+      turning = faces.slice(1).some((other) => {
         const similarity = Math.abs(dot(first.normal, other.normal)),
           otherFacing = dot(other.normal, back);
         // Coplanar triangles disappear. Smooth fans show a stroke only at a silhouette.
         return similarity < 0.9999 && facing * otherFacing <= 0;
-      });
-    const crease = faces
-      .slice(1)
-      .some((other) => Math.abs(dot(first.normal, other.normal)) < 0.985);
+      }),
+      silhouette = (open && pens.openEdges) || (turning && pens.silhouettes);
+    const crease =
+      pens.creases &&
+      faces.slice(1).some((other) => Math.abs(dot(first.normal, other.normal)) < creaseLimit);
     const bodies = outline && faces.map((face) => face.body).filter(Boolean);
     const joint = pens.componentOutlines && bodies.some((body) => body !== bodies[0]);
     if (silhouette || crease || joint)
       strokeModelEdge(start, end, first.component, silhouette ? 0 : 0.52, false, bodies);
   }
-  for (const { a, b, component, texture } of geometry.lines)
-    strokeModelEdge(a, b, component, 1, texture);
+  if (pens.curves)
+    for (const { a, b, component, texture } of geometry.lines)
+      strokeModelEdge(a, b, component, 1, texture);
   const ranked = pens.widths
       .map((width, index) => ({ width, index }))
       .sort((a, b) => b.width - a.width),
@@ -260,14 +262,18 @@ function renderDrawing(
     near = Math.max(near, mark.depth);
   }
   // Base the intervals on visible strokes so a clip or a cropped sheet still uses the pen range.
+  const bandStart = Math.min(pens.distanceFrom, pens.distanceTo - 5) / 100,
+    bandEnd = Math.max(pens.distanceTo, pens.distanceFrom + 5) / 100;
   for (const mark of marks) {
-    const position = near > far ? (near - mark.depth) / (near - far) : 0;
+    const position = near > far ? (near - mark.depth) / (near - far) : 0,
+      // Strokes nearer than the band start use the heaviest pen and those beyond its end the lightest.
+      banded = clamp((position - bandStart) / (bandEnd - bandStart), 0, 1);
     const index =
       pens.mode === 'component'
         ? pens.components[mark.component]
         : ranked[
             pens.mode === 'distance'
-              ? Math.min(count - 1, Math.floor(position * count))
+              ? Math.min(count - 1, Math.floor(banded * count))
               : Math.round((count - 1) * mark.detail)
           ].index;
     if (mark.texture) {
