@@ -1,0 +1,138 @@
+/* Page frame: a header with the import controls above the full-height drawing workspace. */
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 16px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.app-header h1 {
+  margin: 0;
+  font-size: 17px;
+}
+.app-header .sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.header-actions .file-name {
+  color: var(--muted);
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Import feedback: progress, warnings and errors appear beneath the header. */
+.import-status {
+  margin: 0;
+  padding: 6px 16px;
+  font-size: 12px;
+  background: #eef3ec;
+  border-bottom: 1px solid var(--line);
+}
+.import-status[hidden] {
+  display: none;
+}
+.import-status.error {
+  background: #fbeaea;
+  color: #7a1f1f;
+}
+.import-status.warn {
+  background: #fbf4df;
+  color: #5c4710;
+}
+.import-status ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* The workspace and the drop zone share the area under the header. */
+main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+main > .drawing-workspace {
+  flex: 1;
+}
+.drop-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgba(243, 244, 240, 0.94);
+  text-align: center;
+}
+.drop-zone[hidden] {
+  display: none;
+}
+.drop-zone .box {
+  max-width: 460px;
+  padding: 28px 32px;
+  border: 2px dashed #9fb3a6;
+  border-radius: 10px;
+  background: var(--paper);
+}
+.drop-zone h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+.drop-zone.dragging .box {
+  border-color: var(--accent);
+  background: #eef3ec;
+}
+.drop-zone .actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* Until a model is loaded the controls are present but inert. */
+.drawing-controls[inert] {
+  opacity: 0.45;
+}
+.layer-list {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 6px 0;
+}
+.layer-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  font-size: 12px;
+}
+.layer-list .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #0003;
+  flex: none;
+}
+.layer-list .count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}

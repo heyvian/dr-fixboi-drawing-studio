@@ -1,0 +1,77 @@
+/* Design tokens and element defaults shared by every part of the app. */
+:root {
+  --bg: #f2f3ef;
+  --paper: #fcfcf9;
+  --ink: #26322f;
+  --muted: #6b7771;
+  --line: #d9ddd6;
+  --accent: #314e43;
+}
+
+* {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  background: var(--paper);
+  padding: 6px 11px;
+  font: inherit;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #447763;
+  outline-offset: 2px;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input[type='range'] {
+  width: 100%;
+  margin: 7px 0 0;
+  accent-color: var(--accent);
+  height: 14px;
+  cursor: pointer;
+}
+
+.check {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.hint {
+  font-size: 11.5px;
+  line-height: 1.48;
+  color: var(--muted);
+}
+.calc-details {
+  margin: 12px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: #f8f9f5;
+}
+.calc-details[open] summary {
+  margin-bottom: 7px;
+}

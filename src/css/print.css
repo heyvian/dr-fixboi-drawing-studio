@@ -1,0 +1,27 @@
+/* Print / PDF output. The sheet prints at its paper size; the floor set prints one page per plan. */
+#floorPrintPages { display: none; }
+@media print {
+  body.drawings-open.printing-floor-set #drawingsPhase { display: none !important; }
+  body.drawings-open.printing-floor-set #floorPrintPages { display: block; }
+  #floorPrintPages > svg { display: block; break-after: page; }
+  #floorPrintPages > svg:last-child { break-after: auto; }
+}
+@media print {
+  body.drawings-open { display: block !important; height: auto !important; overflow: visible !important; background: white; }
+  body.drawings-open > .app-header, .drawings-open .drawing-controls,
+ .drawings-open .drawing-toolbar, .drawings-open #drawingStatus { display: none !important; }
+  body.drawings-open .drawing-workspace, body.drawings-open .drawing-stage,
+ body.drawings-open .drawing-paper { display: block; min-height: 0; background: white; padding: 0; }
+  body.drawings-open .drawing-sheet {
+  width: var(--drawing-paper-width) !important;
+  height: var(--drawing-paper-height) !important;
+  max-width: none;
+  box-shadow: none;
+ }
+}
+
+@media print {
+  body.drawings-open .import-status,
+  body.drawings-open .drop-zone { display: none !important; }
+  body.drawings-open main { display: block; }
+}

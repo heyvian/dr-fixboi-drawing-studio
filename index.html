@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Poly Nation Drawings</title>
+    <link rel="stylesheet" href="src/css/base.css" />
+    <link rel="stylesheet" href="src/css/layout.css" />
+    <link rel="stylesheet" href="src/css/drawing.css" />
+    <link rel="stylesheet" href="src/css/print.css" />
+  </head>
+  <!-- drawings-open lets the shared print rules apply to this single-workspace app. -->
+  <body class="drawings-open">
+    <header class="app-header">
+      <div>
+        <h1>Poly Nation Drawings</h1>
+        <p class="sub">Orthographic drawings, plans and sections from a Rhino model</p>
+      </div>
+      <div class="header-actions">
+        <span id="fileName" class="file-name" hidden></span>
+        <label class="drawing-view-field">
+          <span class="hint">Model units</span>
+          <select id="unitSelect" title="Units used when a file does not state them, or to override them">
+            <option value="auto">From file</option>
+            <option value="mm">Millimetres</option>
+            <option value="cm">Centimetres</option>
+            <option value="m">Metres</option>
+            <option value="in">Inches</option>
+            <option value="ft">Feet</option>
+          </select>
+        </label>
+        <button type="button" class="primary" id="openFile">Open Rhino file…</button>
+        <button type="button" id="loadSample">Load sample</button>
+        <input id="fileInput" type="file" accept=".3dm,.obj" hidden />
+      </div>
+    </header>
+    <div id="importStatus" class="import-status" role="status" hidden></div>
+
+    <main id="dropArea">
+      <div id="dropZone" class="drop-zone">
+        <div class="box">
+          <h2>Drop a Rhino file here</h2>
+          <p>
+            Open a <strong>.3dm</strong> file to draw plans, elevations, axonometrics and sections.
+            Meshes, extrusions, Breps with render meshes and curves are read; an <strong>.obj</strong>
+            file also works.
+          </p>
+          <p class="hint">
+            Rhino files are read in your browser with rhino3dm. Nothing is uploaded to a server.
+            Loading the reader needs an internet connection the first time.
+          </p>
+          <div class="actions">
+            <button type="button" class="primary" id="openFileZone">Choose file…</button>
+            <button type="button" id="loadSampleZone">Try the sample</button>
+          </div>
+        </div>
+      </div>
+
+      <section id="drawingsPhase" class="drawing-workspace" aria-labelledby="drawingsTitle">
+        <aside class="drawing-controls" id="drawingControls" inert>
+          <h2 id="drawingsTitle" tabindex="-1">Drawings</h2>
+          <label class="drawing-view-field"
+            >Sheet title
+            <input id="drawingTitle" type="text" autocomplete="off" />
+          </label>
+          <label class="drawing-view-field"
+            >View
+            <select id="drawingView">
+              <option value="axo">Axonometric</option>
+              <option value="plan">Plan</option>
+              <option value="elevation">Elevation</option>
+              <option value="aligned" disabled>Aligned to clipping plane</option>
+            </select>
+          </label>
+          <div id="drawingCompass" class="drawing-compass" role="group" aria-label="View compass"></div>
+          <label id="drawingOrbitField" class="drawing-orbit" hidden
+            >Horizontal orbit <output id="drawingOrbitAngle"></output>
+            <input id="drawingOrbit" type="range" min="0" max="359" step="1" />
+          </label>
+          <label id="drawingPlanSheetField" class="drawing-view-field" hidden
+            >Plans on sheet
+            <select id="drawingPlanSheet">
+              <option value="single">Current plan</option>
+              <option value="floors">All floor plans</option>
+            </select>
+          </label>
+          <label class="drawing-view-field"
+            >Rendering
+            <select id="drawingRendering">
+              <option value="linework">Linework</option>
+              <option value="color">Hybrid · layer or object colour</option>
+            </select>
+          </label>
+          <label class="drawing-view-field"
+            >Storey height (m)
+            <input id="drawingStorey" type="number" min="1" max="20" step="0.1" />
+          </label>
+
+          <details class="calc-details" open>
+            <summary>Layers</summary>
+            <p class="hint">Untick a layer to leave it out of every drawing.</p>
+            <div id="layerList" class="layer-list"></div>
+            <label class="drawing-view-field"
+              >Outlines follow
+              <select id="drawingBodies">
+                <option value="layer">Layers</option>
+                <option value="object">Individual objects</option>
+                <option value="none">Nothing</option>
+              </select>
+            </label>
+          </details>
+
+          <details class="calc-details drawing-pen-settings">
+            <summary>Line weights</summary>
+            <label class="drawing-view-field"
+              >Drawing style
+              <select id="drawingPenStyle">
+                <option value="standard">Standard line drawing</option>
+                <option value="sketch">Pen over pencil</option>
+              </select>
+            </label>
+            <div class="drawing-colours">
+              <label class="drawing-view-field">Paper colour <input id="drawingPaperColor" type="color" /></label>
+              <label class="drawing-view-field"
+                >Set all pen colours <input id="drawingInkColor" type="color"
+              /></label>
+            </div>
+            <label class="drawing-view-field"
+              >Weight assignment
+              <select id="drawingPenMode">
+                <option value="distance">Camera distance</option>
+                <option value="component">Layers</option>
+                <option value="profile">Outlines and detail</option>
+              </select>
+            </label>
+            <label class="check"
+              ><input id="drawingSilhouette" type="checkbox" aria-describedby="drawingOutlineNote" />
+              Overall silhouette</label
+            >
+            <label class="check"
+              ><input id="drawingComponentOutlines" type="checkbox" aria-describedby="drawingOutlineNote" />
+              Key outlines</label
+            >
+            <p class="hint" id="drawingOutlineNote">
+              Use the heaviest pen on the model perimeter, or on each outline body chosen under Layers.
+            </p>
+            <label class="drawing-view-field"
+              >Number of weights
+              <select id="drawingPenCount">
+                <option>1</option>
+                <option>2</option>
+                <option>3</option>
+                <option>4</option>
+                <option>5</option>
+              </select>
+            </label>
+            <label class="check"
+              ><input id="drawingAdaptWeights" type="checkbox" aria-describedby="drawingPenScaleNote" />
+              Adapt weights to scale</label
+            >
+            <p class="hint" id="drawingPenScaleNote">Widths stay fixed on paper at every scale.</p>
+            <div id="drawingPenWidths"></div>
+            <div id="drawingPenComponents" hidden></div>
+            <p class="hint">Weights are in printed millimetres. Section cuts use the heaviest weight.</p>
+          </details>
+
+          <label class="check"><input type="checkbox" id="drawingGlazing" /> See through glazing</label>
+          <h3>Clipping planes</h3>
+          <button type="button" id="addDrawingPlane">Add plane</button>
+          <div id="drawingPlanes" class="drawing-plane-list"></div>
+          <div id="drawingPlaneFields" class="drawing-plane-fields" hidden>
+            <label class="drawing-view-field"
+              >Orientation
+              <select id="drawingPlaneAxis">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+              </select>
+            </label>
+            <label id="drawingAngleField" class="drawing-offset" hidden
+              >Angle (°)
+              <input type="number" id="drawingPlaneAngle" min="0" max="360" step="1" />
+            </label>
+            <label class="drawing-view-field" id="drawingFloorField" hidden
+              >Horizontal datum
+              <select id="drawingFloor">
+                <option value="">Project datum</option>
+              </select>
+            </label>
+            <label class="drawing-offset"
+              >Offset (m)
+              <input type="number" id="drawingPlaneOffset" step="0.1" />
+            </label>
+            <output
+              id="drawingCutElevation"
+              for="drawingFloor drawingPlaneOffset drawingPlaneMove"
+              class="hint"
+              hidden
+            ></output>
+            <div class="drawing-plane-offset-tools">
+              <input type="range" id="drawingPlaneMove" step="0.1" aria-label="Move clipping plane" />
+              <datalist id="drawingCenterTick"><option value="0" label="Center"></option></datalist>
+              <button type="button" id="centerDrawingPlane" hidden>Center</button>
+            </div>
+            <label class="check"><input type="checkbox" id="flipDrawingPlane" /> Flip kept side</label>
+            <div class="drawing-plane-actions">
+              <button type="button" id="placeDrawingPlane" aria-pressed="false">Place on drawing</button>
+              <button type="button" id="alignDrawingPlane">Align view</button>
+            </div>
+          </div>
+          <details class="drawing-export-help">
+            <summary>Illustrator layers</summary>
+            <p class="hint">
+              For native layers, run the script in Illustrator using File → Scripts → Other Script, then
+              select your exported SVG.
+            </p>
+            <a href="tools/Poly-Nation-SVG-to-Layers.jsx" download>Download Illustrator layer script</a>
+          </details>
+        </aside>
+
+        <div class="drawing-stage">
+          <div class="drawing-toolbar">
+            <label
+              >Paper size
+              <select id="drawingPaper">
+                <option value="letter">Letter · 8.5 × 11 in</option>
+                <option value="tabloid">Tabloid · 11 × 17 in</option>
+              </select>
+            </label>
+            <label
+              >Page orientation
+              <select id="drawingOrientation">
+                <option value="landscape">Landscape</option>
+                <option value="portrait">Portrait</option>
+              </select>
+            </label>
+            <label
+              >Scale
+              <select id="drawingScale">
+                <option value="auto">Auto fit</option>
+              </select>
+            </label>
+            <button type="button" id="fitDrawing" title="Center the drawing and fit its scale to the sheet">
+              Fit
+            </button>
+            <button
+              type="button"
+              id="groundDrawing"
+              title="Align ground 5 mm above the bottom drawing margin"
+            >
+              Ground
+            </button>
+            <button type="button" class="primary" id="exportDrawing" disabled>Export SVG</button>
+            <button type="button" id="printDrawing" disabled>Print / PDF</button>
+            <button type="button" id="printFloorSet" hidden>Print floor set</button>
+          </div>
+          <p class="hint" id="drawingStatus" role="status">Open a Rhino file to begin.</p>
+          <div id="drawingPaperFrame" class="drawing-paper">
+            <svg
+              id="drawingSheet"
+              class="drawing-sheet"
+              role="img"
+              tabindex="0"
+              aria-describedby="drawingStatus"
+              aria-label="Orthographic line drawing of the loaded model"
+              xmlns="http://www.w3.org/2000/svg"
+            ></svg>
+          </div>
+        </div>
+      </section>
+    </main>
+    <div id="floorPrintPages" aria-hidden="true"></div>
+
+    <!-- Classic scripts, in dependency order. They share globals so the app runs from file://. -->
+    <script src="src/js/util.js"></script>
+    <script src="src/js/drawing-core.js"></script>
+    <script src="src/js/drawing-render.js"></script>
+    <script src="src/js/model-import.js"></script>
+    <script src="src/js/drawing-ui.js"></script>
+    <script src="src/js/app.js"></script>
+  </body>
+</html>

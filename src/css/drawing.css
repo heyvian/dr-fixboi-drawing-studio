@@ -1,0 +1,101 @@
+/* Drawing workspace: control column, compass, clipping planes, pen settings, sheet and toolbar. */
+.drawing-workspace {
+ flex: 1;
+ min-height: 0;
+ display: grid;
+ grid-template-columns: minmax(235px, 270px) minmax(0, 1fr);
+ background: #e8ede6;
+}
+.drawing-controls {
+ padding: 16px;
+ min-height: 0;
+ overflow: auto;
+ background: var(--paper);
+ border-right: 1px solid var(--line);
+}
+.drawing-controls h2 { margin: 0 0 13px; font-size: 19px; }
+.drawing-controls h3 { margin: 16px 0 6px; font-size: 14px; }
+.drawing-controls label { font-weight: 550; }
+.drawing-controls select, .drawing-controls input[type=number] {
+ box-sizing: border-box;
+ padding: 6px 7px;
+ font: inherit;
+ color: var(--ink);
+ border: 1px solid #bfcbbf;
+ border-radius: 4px;
+ background: var(--paper);
+}
+.drawing-view-field { display: grid; gap: 4px; }
+.drawing-pen-settings { display: grid; gap: 7px; }
+.drawing-colours { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: end; }
+.drawing-pen-row { display: grid; grid-template-columns: minmax(0, 1fr) 51px 32px; align-items: center; gap: 4px 6px; margin: 8px 0; }
+.drawing-pen-row span { grid-column: 1/-1; }
+.drawing-pen-row input { width: 100%; min-width: 0; }
+.drawing-export-help .hint { margin: 7px 0; }
+.drawing-export-help a { color: var(--accent); }
+.drawing-compass {
+ display: grid;
+ grid-template-columns: repeat(3, 42px);
+ gap: 3px;
+ margin: 8px 0;
+}
+.drawing-compass[hidden], .drawing-controls [hidden], #printFloorSet[hidden] { display: none; }
+.drawing-orbit { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin: 7px 0 12px; }
+.drawing-orbit input { grid-column: 1/-1; width: 100%; margin: 0; }
+.drawing-plane-offset-tools { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.drawing-plane-offset-tools input { min-width: 0; }
+.drawing-plane-offset-tools button { padding: 3px 6px; font-size: 11px; white-space: nowrap; }
+.drawing-sheet.planset { cursor: default; }
+.drawing-compass button { min-height: 26px; padding: 2px 4px; font-size: 11px; }
+.drawing-compass button[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
+.drawing-compass button:nth-child(5) { grid-column: 3; }
+.drawing-plane-list { display: grid; gap: 6px; margin: 8px 0; }
+.drawing-plane-row {
+ display: grid;
+ grid-template-columns: minmax(0, 1fr) auto;
+ gap: 5px;
+}
+.drawing-plane-row button:first-child { text-align: left; }
+.drawing-plane-row [aria-pressed=true], #placeDrawingPlane[aria-pressed=true] {
+ background: #e2ebe3;
+ border-color: #91ac9c;
+}
+.drawing-plane-fields {
+ display: grid;
+ gap: 9px;
+ margin-top: 10px;
+ border-top: 1px solid var(--line);
+ padding-top: 10px;
+}
+.drawing-plane-fields[hidden], .drawing-plane-fields label[hidden] { display: none; }
+.drawing-offset { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.drawing-offset input[type=number] { width: 76px; }
+.drawing-plane-fields input[type=range] { width: 100%; margin: 0; }
+.drawing-plane-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.drawing-plane-actions button { flex: 1; white-space: nowrap; }
+.drawing-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 8px; }
+.drawing-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.drawing-toolbar label { display: grid; gap: 3px; font-size: 11px; font-weight: 600; }
+.drawing-toolbar select { min-height: 30px; color: var(--ink); font: inherit; }
+.drawing-toolbar #exportDrawing { margin-left: auto; }
+.drawing-stage .hint { margin: 0; }
+.drawing-paper { display: grid; place-items: center; min-height: 0; flex: 1; }
+.drawing-sheet {
+ display: block;
+ max-width: 100%;
+ background: white;
+ box-shadow: 0 1px 5px #304c3730;
+}
+.drawing-sheet { cursor: grab; touch-action: none; }
+.drawing-sheet[data-dragging=true] { cursor: grabbing; }
+.drawing-sheet[data-placing=true] { cursor: crosshair; }
+.drawing-sheet:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 899px) {
+  .drawing-workspace { min-height: 75vh; }
+  .drawing-paper { min-height: 450px; }
+}
+@media (max-width: 650px) {
+  .drawing-workspace { grid-template-columns: 1fr; }
+  .drawing-controls { border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .drawing-paper { min-height: 345px; }
+}
