@@ -160,7 +160,11 @@
       $('navAxoCompass').append(button);
       return button;
     });
-    const syncAxo = () => axoButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(viewer.activeAxo === index)));
+    const syncAxo = () => {
+      axoButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(viewer.activeAxo === index)));
+      // The compass only matters while the view is an axonometric
+      $('navAxoGroup').hidden = viewer.activeAxo === null;
+    };
     viewer.onMove = syncAxo;
     syncAxo();
     const setFocus = $('navSetFocus');
