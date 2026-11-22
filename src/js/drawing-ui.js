@@ -5,6 +5,9 @@ const openDrawingWorkspace = (() => {
     sheet = $('drawingSheet'),
     paperFrame = $('drawingPaperFrame'),
     status = $('drawingStatus'),
+    loading = $('drawingLoading'),
+    loadingLabel = $('drawingLoadingLabel'),
+    progress = $('drawingProgress'),
     exportButton = $('exportDrawing'),
     printButton = $('printDrawing'),
     storageKey = 'poly-nation-drawings-standalone-v1',
@@ -75,6 +78,7 @@ const openDrawingWorkspace = (() => {
     geometry = null,
     rendered = null,
     timer = 0,
+    renderRevision = 0,
     printingFloorSet = false,
     placing = false,
     drag = null;
@@ -559,7 +563,7 @@ const openDrawingWorkspace = (() => {
     return tile;
   }
 
-  function renderFloorSheet(paper, camera) {
+  async function renderFloorSheet(paper, camera, revision) {
     const width = Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
       height = Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
       margin = (10 * DRAWING_PIXELS_PER_INCH) / 25.4,
@@ -587,7 +591,11 @@ const openDrawingWorkspace = (() => {
     let cropped = false,
       populated = false;
     const regionFills = [];
-    const tiles = plans.map(({ planes, label }, i) => {
+    const tiles = [];
+    for (const [i, { planes, label }] of plans.entries()) {
+      setDrawingProgress(`Drawing floor ${i + 1} of ${plans.length}…`, i, plans.length);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (!currentRender(revision)) return null;
       const frame = renderDrawing(
         geometry,
         camera,
@@ -604,13 +612,13 @@ const openDrawingWorkspace = (() => {
       cropped ||= frame.cropped;
       populated ||= frame.populated;
       regionFills.push(frame.exportFills);
-      return floorView(
+      tiles.push(floorView(
         frame,
         label,
         margin + (i % columns) * region.width,
         margin + Math.floor(i / columns) * region.height
-      );
-    });
+      ));
+    }
     floorTiles.replaceChildren(...tiles);
     return {
       width,
@@ -624,11 +632,25 @@ const openDrawingWorkspace = (() => {
     };
   }
 
-  function render() {
+  const currentRender = (revision) =>
+    revision === renderRevision && sourceModel && !panel.hidden && !$('drawingStage').hidden;
+
+  function setDrawingProgress(message, done, total) {
+    loading.hidden = !message;
+    paperFrame.setAttribute('aria-busy', String(Boolean(message)));
+    if (!message) return;
+    loadingLabel.textContent = status.textContent = message;
+    if (total > 0) {
+      progress.max = total;
+      progress.value = done;
+    } else progress.removeAttribute('value');
+  }
+
+  async function render(revision) {
     timer = 0;
-    if (!sourceModel || panel.hidden || $('drawingStage').hidden) return;
-    const paper = paperDimensions();
     try {
+      if (!currentRender(revision)) return;
+      const paper = paperDimensions();
       // Geometry is welded once per import, layer-visibility change or outline-body setting.
       if (!geometry) {
         drawingBodyMode = settings.bodies;
@@ -642,8 +664,8 @@ const openDrawingWorkspace = (() => {
         ? 'Ground alignment is available in elevations and axonometrics.'
         : 'Align ground 5 mm above the bottom drawing margin';
       if (!allPlans()) floorTiles.replaceChildren();
-      rendered = allPlans()
-        ? renderFloorSheet(paper, camera)
+      const next = allPlans()
+        ? await renderFloorSheet(paper, camera, revision)
         : renderDrawing(
             geometry,
             camera,
@@ -657,6 +679,8 @@ const openDrawingWorkspace = (() => {
             null,
             framing
           );
+      if (!next || !currentRender(revision)) return;
+      rendered = next;
       const { width, height, margin, denominator } = rendered,
         ruleY = height - margin * 1.8,
         textY = height - margin,
@@ -692,8 +716,8 @@ const openDrawingWorkspace = (() => {
       footerTitle.textContent = sheetTitle() + ' \u00b7 ' + viewLabel;
       footerIdentification.setAttribute('x', margin);
       footerIdentification.setAttribute('y', textY + 13);
-      const [number, revision] = titleFields.slice(1).map((field) => field.value.trim());
-      footerIdentification.textContent = [number, revision && `REV ${revision}`].filter(Boolean).join(' · ');
+      const [number, sheetRevision] = titleFields.slice(1).map((field) => field.value.trim());
+      footerIdentification.textContent = [number, sheetRevision && `REV ${sheetRevision}`].filter(Boolean).join(' · ');
       // Elevations and upright sections have an edge-on plan. Their footer only needs the scale.
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
@@ -701,14 +725,19 @@ const openDrawingWorkspace = (() => {
       exportButton.disabled = printButton.disabled = !rendered.populated;
       $('printFloorSet').disabled = printingFloorSet;
       resizePaperPreview();
+      setDrawingProgress('');
       showStatus();
     } catch (error) {
+      if (!currentRender(revision)) return;
       console.error('Drawing render failed', error);
       status.textContent = 'The drawing could not be rendered.';
+    } finally {
+      if (revision === renderRevision && !loading.hidden) setDrawingProgress('');
     }
   }
   const sheetTitle = () => $('drawingTitle').value.trim() || sourceModel.name;
   function showStatus() {
+    if (!loading.hidden) return;
     status.textContent = placing
       ? 'Click the drawing to place the selected plane.'
       : rendered?.cropped
@@ -728,7 +757,12 @@ const openDrawingWorkspace = (() => {
     exportButton.disabled = printButton.disabled = true;
     $('printFloorSet').disabled = true;
     clearTimeout(timer);
-    timer = setTimeout(render, 45);
+    timer = 0;
+    const revision = ++renderRevision;
+    if (currentRender(revision)) {
+      setDrawingProgress(allPlans() ? 'Preparing floor plans…' : 'Generating drawing…');
+      timer = setTimeout(() => render(revision), 45);
+    } else setDrawingProgress('');
   }
   new ResizeObserver(() => {
     if (!panel.hidden && !$('drawingStage').hidden) resizePaperPreview();
@@ -1176,7 +1210,7 @@ const openDrawingWorkspace = (() => {
     moveDrawing(delta[0] * step, delta[1] * step);
   });
   sheet.addEventListener('pointerdown', (event) => {
-    if (placing || timer || !rendered || allPlans() || event.button !== 0) return;
+    if (placing || !loading.hidden || !rendered || allPlans() || event.button !== 0) return;
     drag = { id: event.pointerId, start: sheetPoint(event), x: 0, y: 0 };
     sheet.focus({ preventScroll: true });
     sheet.setPointerCapture(event.pointerId);
@@ -1198,12 +1232,12 @@ const openDrawingWorkspace = (() => {
         (drag.x * 25.4) / DRAWING_PIXELS_PER_INCH,
         (drag.y * 25.4) / DRAWING_PIXELS_PER_INCH
       );
-    else exportButton.disabled = printButton.disabled = !rendered.populated;
+    else if (loading.hidden) exportButton.disabled = printButton.disabled = !rendered.populated;
     drag = null;
     sheet.dataset.dragging = 'false';
   });
   sheet.addEventListener('click', (event) => {
-    if (!placing || !rendered) return;
+    if (!placing || !rendered || !loading.hidden) return;
     const point = sheetPoint(event);
     const { basis, width, height, depth, scale, originX, originY } = rendered;
     if (point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) return;
@@ -1369,7 +1403,7 @@ const openDrawingWorkspace = (() => {
       status.textContent = 'The floor set could not be prepared.';
     } finally {
       printingFloorSet = false;
-      button.disabled = Boolean(timer);
+      button.disabled = !loading.hidden;
       button.textContent = 'Print floor set';
     }
   };
@@ -1463,5 +1497,6 @@ const openDrawingWorkspace = (() => {
   $('useNavView').onclick = () => setBase(viewer.snapshot(), true);
 
   load.setBase = setBase;
+  load.refresh = queueDrawing;
   return load;
 })();

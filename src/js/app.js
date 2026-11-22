@@ -31,7 +31,7 @@
       const moved = viewer.revision !== appliedRevision;
       appliedRevision = viewer.revision;
       openDrawingWorkspace.setBase(snapshot, moved || force);
-    }
+    } else if (current) openDrawingWorkspace.refresh();
   }
 
   // Show a message under the header. 'kind' is '' (info), 'warn' or 'error'; 'lines' are bullet points.
@@ -45,6 +45,24 @@
       status.append(list);
     }
   }
+  function setImportBusy(value) {
+    busy = value;
+    workspace.setAttribute('aria-busy', String(value));
+    for (const control of [$('openFile'), $('openFileZone'), $('loadSample'), $('loadSampleZone'), unitSelect])
+      control.disabled = value;
+  }
+  function loadingModel(message, done, total) {
+    say(message, 'loading');
+    const progress = document.createElement('progress');
+    progress.className = 'studio-progress';
+    progress.setAttribute('aria-label', 'Model import progress');
+    if (total > 0) {
+      progress.max = total;
+      progress.value = done;
+    }
+    status.append(progress);
+  }
+  const yieldForImport = () => new Promise((resolve) => setTimeout(resolve, 20));
 
   // Hand a finished model to the workspace and rebuild the layer list.
   function show(model, label, identity) {
@@ -102,23 +120,28 @@
   // Read a user-chosen .3dm or .obj file.
   async function openFile(file) {
     if (busy || !file) return;
-    busy = true;
+    setImportBusy(true);
     lastFile = file;
     const base = file.name.replace(/\.[^.]+$/, '');
     try {
       let model;
       if (/\.obj$/i.test(file.name)) {
-        say('Reading ' + file.name + '…');
-        model = importObj(await file.text(), base, unitSelect.value);
+        loadingModel('Reading ' + file.name + '…');
+        const contents = await file.text();
+        loadingModel('Building geometry…');
+        await yieldForImport();
+        model = importObj(contents, base, unitSelect.value);
       } else if (/\.3dm$/i.test(file.name)) {
-        say('Loading the Rhino reader…');
+        loadingModel('Loading the Rhino reader…');
         const rhino = await timed(loadRhino(), 45000);
-        say('Reading ' + file.name + '…');
+        loadingModel('Reading ' + file.name + '…');
         const bytes = new Uint8Array(await file.arrayBuffer());
         model = await importRhino(rhino, bytes, base, unitSelect.value, (done, total) =>
-          say(`Reading ${file.name}… ${done} of ${total} objects`)
+          loadingModel(`Building geometry… ${done} of ${total} objects`, done, total)
         );
       } else throw Error('Choose a Rhino .3dm file or an .obj file.');
+      loadingModel('Preparing the model view…');
+      await yieldForImport();
       show(model, file.name, JSON.stringify([file.name, file.size, file.lastModified]));
     } catch (error) {
       console.error('Import failed', error);
@@ -130,19 +153,26 @@
           : []
       );
     } finally {
-      busy = false;
+      setImportBusy(false);
     }
   }
 
-  function openSample() {
+  async function openSample() {
     if (busy) return;
+    setImportBusy(true);
     lastFile = null;
     try {
+      loadingModel('Building the sample model…');
+      await yieldForImport();
       const model = sampleModel();
+      loadingModel('Preparing the model view…');
+      await yieldForImport();
       show(model, model.name, 'sample:valentine');
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');
+    } finally {
+      setImportBusy(false);
     }
   }
 

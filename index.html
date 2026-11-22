@@ -409,6 +409,10 @@
           <p class="hint" id="drawingStatus" role="status">Open a Rhino file to begin.</p>
           <div id="drawingPaperFrame" class="drawing-paper">
             <div class="workbench-fragments" aria-hidden="true"></div>
+            <div id="drawingLoading" class="drawing-loading" aria-hidden="true" hidden>
+              <span id="drawingLoadingLabel"></span>
+              <progress class="studio-progress" id="drawingProgress"></progress>
+            </div>
             <svg
               id="drawingSheet"
               class="drawing-sheet"
