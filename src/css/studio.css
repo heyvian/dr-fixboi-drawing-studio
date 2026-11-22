@@ -282,7 +282,7 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   transform: translate(-6%, 2%) rotate(-10deg);
 }
 .sample-sheets .sample-back:nth-child(2) { transform: translate(2%, -8%) rotate(6deg); }
-.sample-sheets a { display: block; }
+.sample-sheets .sample-back:nth-child(3) { transform: translate(-2%, -3%) rotate(-3deg); }
 .sample-fragment figcaption {
   width: fit-content;
   max-width: 100%;

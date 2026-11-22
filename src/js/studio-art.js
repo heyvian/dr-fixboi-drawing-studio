@@ -230,16 +230,10 @@
   dropZone.addEventListener('pointerleave', resetMotion);
   canMove.addEventListener('change', resetMotion);
 
-  const sampleSheets = ['Axonometric', 'Elevation', 'Plan', 'Section'];
-  const frontIndex = seed % sampleSheets.length;
-  const artworkPath = (view) => 'src/assets/sample-sheets/' + view.toLowerCase() + '.svg';
-  const front = sampleSheets[frontIndex];
+  const directions = ['NE', 'SE', 'NW', 'SW'];
+  const direction = directions[seed % directions.length];
   const sampleImage = document.querySelector('#sampleSheetImage');
-  const sampleLink = document.querySelector('#sampleSheetLink');
-  sampleImage.src = sampleLink.href = artworkPath(front);
-  sampleImage.alt = 'Open the full Valentine ' + front.toLowerCase() + ' sheet';
-  document.querySelector('#sampleSheetView').textContent = front;
-  document.querySelectorAll('.sample-back').forEach((sheet, i) => {
-    sheet.src = artworkPath(sampleSheets[(frontIndex + i + 1) % sampleSheets.length]);
-  });
+  sampleImage.src = 'src/assets/sample-sheets/axonometric-' + direction.toLowerCase() + '.svg';
+  sampleImage.alt = direction + ' axonometric drawing of The Valentine';
+  document.querySelector('#sampleSheetView').textContent = direction + ' axonometric';
 })();
