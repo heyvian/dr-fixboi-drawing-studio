@@ -76,7 +76,7 @@ const openDrawingWorkspace = (() => {
       scale: 'auto',
       mode: 'linework',
       pens: drawingPens(),
-      placement: { x: 0, y: 0, ground: false }
+      placement: { x: 0, y: 0, ground: false, center: false }
     },
     sourceModel = null,
     modelIdentity = null,
@@ -113,7 +113,8 @@ const openDrawingWorkspace = (() => {
         placement: {
           x: Number.isFinite(saved.placement?.x) ? saved.placement.x : 0,
           y: Number.isFinite(saved.placement?.y) ? saved.placement.y : 0,
-          ground: saved.placement?.ground === true
+          ground: saved.placement?.ground === true,
+          center: saved.placement?.center === true
         },
         glazing: saved.glazing === true,
         pens: drawingPens(saved.pens),
@@ -343,6 +344,7 @@ const openDrawingWorkspace = (() => {
     $('drawingPlanSheet').value = settings.planSheet;
     sheet.classList.toggle('planset', allPlans());
     $('placeDrawingPlane').disabled = allPlans();
+    $('centerDrawing').disabled = allPlans();
   }
 
   function floorPlans() {
@@ -1069,7 +1071,11 @@ const openDrawingWorkspace = (() => {
   $('fitDrawing').onclick = () => {
     settings.scale = 'auto';
     $('drawingScale').value = settings.scale;
-    settings.placement = { x: 0, y: 0, ground: false };
+    settings.placement = { x: 0, y: 0, ground: false, center: false };
+    queueDrawing();
+  };
+  $('centerDrawing').onclick = () => {
+    settings.placement = { x: 0, y: 0, ground: false, center: true };
     queueDrawing();
   };
   $('groundDrawing').onclick = () => {
@@ -1464,7 +1470,7 @@ const openDrawingWorkspace = (() => {
     if (select) {
       settings.view = 'nav';
       settings.orbitLocked = true;
-      settings.placement = { x: 0, y: 0, ground: false };
+      settings.placement = { x: 0, y: 0, ground: false, center: false };
       stopPlacing();
     }
     syncSettings();

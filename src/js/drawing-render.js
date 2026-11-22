@@ -67,6 +67,7 @@ function renderDrawing(
     left = top = 0;
     rightEdge = bottom = 1;
   }
+  const modelBounds = { left, rightEdge, top, bottom };
   // A frame (from the 3D view) replaces the model bounds: centre on its target and make sure
   // everything that was visible in the 3D window fits the sheet.
   if (frame) {
@@ -79,6 +80,7 @@ function renderDrawing(
     top = centerY - halfWidth / aspect;
     bottom = centerY + halfWidth / aspect;
   }
+  const placementBounds = placement.center ? modelBounds : { left, rightEdge, top, bottom };
   const available = Math.min(
       (width - margin * 2) / (rightEdge - left),
       drawingHeight / (bottom - top)
@@ -89,8 +91,10 @@ function renderDrawing(
         ? (DRAWING_SCALES.find((value) => value >= minimumDenominator) ?? DRAWING_SCALES.at(-1))
         : Number(scaleChoice),
     scale = (1000 * pixelsPerMillimetre) / denominator,
-    originX = width / 2 - ((left + rightEdge) * scale) / 2 + placement.x * pixelsPerMillimetre,
-    centeredY = margin + drawingHeight / 2 - ((top + bottom) * scale) / 2,
+    midX = (placementBounds.left + placementBounds.rightEdge) / 2,
+    midY = (placementBounds.top + placementBounds.bottom) / 2,
+    originX = width / 2 - midX * scale + placement.x * pixelsPerMillimetre,
+    centeredY = margin + drawingHeight / 2 - midY * scale,
     groundY = margin + drawingHeight - 5 * pixelsPerMillimetre,
     originY =
       (placement.ground && Math.abs(Math.cos(camera.el)) > 0.01
@@ -343,8 +347,8 @@ function renderDrawing(
     scale,
     originX,
     originY,
-    midX: (left + rightEdge) / 2,
-    midY: (top + bottom) / 2,
+    midX,
+    midY,
     depth,
     wash,
     exportFills: paint
@@ -356,10 +360,10 @@ function renderDrawing(
     margin,
     drawingHeight,
     cropped:
-      originX + left * scale < margin - 0.1 ||
-      originX + rightEdge * scale > width - margin + 0.1 ||
-      originY + top * scale < margin - 0.1 ||
-      originY + bottom * scale > margin + drawingHeight + 0.1
+      originX + placementBounds.left * scale < margin - 0.1 ||
+      originX + placementBounds.rightEdge * scale > width - margin + 0.1 ||
+      originY + placementBounds.top * scale < margin - 0.1 ||
+      originY + placementBounds.bottom * scale > margin + drawingHeight + 0.1
   };
 }
 
