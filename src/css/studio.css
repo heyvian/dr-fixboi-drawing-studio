@@ -119,6 +119,7 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
 .landing-field::after {
   content: '';
   position: absolute;
+  z-index: 2;
   inset: 0;
   background: linear-gradient(96deg, #f2f1e9 2%, #f2f1e9f5 17%, #f2f1e9c4 28%, #f2f1e900 52%);
 }
@@ -140,17 +141,13 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   border: 1px solid #442d6238;
   border-radius: 50%;
 }
-.field-incision {
+#landingArtwork {
   position: absolute;
   z-index: 1;
-  right: -1%;
-  top: 5%;
-  width: 75%;
-  height: 75%;
-  background:
-    repeating-linear-gradient(55deg, #24202f 0 1px, transparent 1px 6px),
-    linear-gradient(126deg, #252035 4%, #8254a052 43%, #87c7ab87 68%, #24202f 89%);
-  clip-path: polygon(100% 4%, 100% 8%, 43% 59%, 89% 38%, 78% 56%, 100% 57%, 100% 59%, 67% 63%, 83% 83%, 47% 75%, 29% 98%, 40% 74%, 0 89%, 30% 70%, 21% 62%, 45% 57%, 42% 43%, 48% 55%);
+  inset: -6% -7% -8% 24%;
+  width: 83%;
+  height: 114%;
+  object-fit: contain;
 }
 .field-datum {
   position: absolute;
@@ -288,7 +285,7 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   position: absolute;
   z-index: -1;
   inset: 3% 6%;
-  border: 1px dashed #57426187;
+  border: 1px dashed #55555575;
   border-radius: 50%;
   transform: rotate(-10deg);
   pointer-events: none;
@@ -308,33 +305,19 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   --preview-inset: 25px;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
-.workbench-fragments {
+.nav-canvas-frame::before, .workbench-fragments {
   position: absolute;
-  z-index: -1;
   inset: 0;
+  background: var(--studio-plot, none) right center / contain no-repeat;
   pointer-events: none;
-  overflow: hidden;
 }
-.workbench-fragments::before, .workbench-fragments::after {
+.nav-canvas-frame::before {
   content: '';
-  position: absolute;
-  width: 42%;
-  height: 61%;
-  background:
-    repeating-linear-gradient(134deg, #43334f 0 1px, transparent 2px 5px),
-    radial-gradient(ellipse at center, #e6fb57, #ae93c0 65%);
-  opacity: .42;
+  z-index: 1;
+  opacity: .12;
 }
-.workbench-fragments::before {
-  bottom: 0;
-  left: 0;
-  clip-path: polygon(0 36%, 100% 0, 50% 59%, 62% 56%, 6% 100%, 0 85%);
-}
-.workbench-fragments::after {
-  top: 0;
-  right: 0;
-  clip-path: polygon(68% 0, 100% 0, 100% 45%, 41% 63%, 53% 43%, 0 63%);
-}
+.workbench-fragments { z-index: -1; opacity: .28; }
+.nav-focus { z-index: 2; }
 .drawing-sheet { max-height: 100%; box-shadow: 0 2px 12px #24211b45; }
 #navCanvas { border: 0; }
 .drawing-compass button[aria-pressed=true], #navSetFocus[aria-pressed=true],
@@ -358,18 +341,18 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   .drop-zone { position: relative; width: 100%; }
   main:has(.drop-zone:not([hidden])) .drawing-workspace { display: none; }
   .drop-zone .box { min-height: max(635px, 78svh); align-items: start; padding: 48px 22px 250px; }
-  .drop-zone h2 { font-size: clamp(2.8rem, 11.5vw, 5rem); margin-bottom: 25px; }
+  .drop-zone h2 { font-size: clamp(2.35rem, 10.1vw, 5rem); margin-bottom: 25px; }
   .landing-description { font-size: 14px; }
   .landing-field::before { inset: 40% -30% -4% -24%; background-position: 65% center; }
   .landing-field::after { background: linear-gradient(#f2f1e9 1%, #f2f1e9f5 30%, #f2f1e900 68%); }
-  .field-incision { top: 51%; width: 85%; height: 42%; }
+  #landingArtwork { inset: 36% -28% -7% -20%; width: 148%; height: 71%; }
   .field-orbit { top: 58%; width: 73%; }
   .field-datum { top: 57%; right: 8%; }
   .sample-fragment { bottom: 4%; right: 6%; }
   .drawing-workspace { grid-template-columns: minmax(0, 1fr); }
   .nav-stage, .drawing-stage { grid-area: 1 / 1; }
   .drawing-paper { min-height: 330px; --preview-inset: 6px; }
-  .workbench-fragments { opacity: .45; }
+  .workbench-fragments { opacity: .21; }
   .drawing-controls { grid-area: 2 / 1; border-left: 0; overflow: auto; }
   .nav-compass { flex-wrap: wrap; }
   .nav-axo-menu { white-space: normal; min-width: 165px; }

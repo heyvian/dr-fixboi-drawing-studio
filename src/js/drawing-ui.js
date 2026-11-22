@@ -942,7 +942,7 @@ const openDrawingWorkspace = (() => {
     if (!plane && settings.view === 'aligned') settings.view = 'axo';
     if (!base && settings.view === 'nav') settings.view = 'axo';
     $('drawingView').value = settings.view;
-    $('drawingStorey').value = settings.storey;
+    $('drawingStorey').value = Number(settings.storey.toFixed(3));
     $('drawingBodies').value = settings.bodies;
     $('drawingPlanSheet').value = settings.planSheet;
     syncCompass();
@@ -1438,6 +1438,7 @@ const openDrawingWorkspace = (() => {
       }
       titleFields[0].value = model.name;
       titleFields[1].value = titleFields[2].value = '';
+      if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
       try {
         const working = JSON.parse(localStorage.getItem(activeStorageKey()));
         if (Array.isArray(working?.settings?.planes)) restoreSnapshot(working);

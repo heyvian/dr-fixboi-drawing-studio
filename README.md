@@ -2,7 +2,9 @@
 
 Standalone drawing tool extracted from the [Poly Nation Cross Pollination Laboratory](https://github.com/heyvian/poly-nation). It takes a 3D model and produces architectural linework drawings: axonometrics, plans, floor plans, elevations and sections, with line weights, clipping planes, SVG export and print/PDF.
 
-Instead of the lab's generated geometry, it **attempts to import Rhino `.3dm` files**. OBJ files and a built-in sample building are also supported.
+Instead of the lab's generated geometry, it imports supported Rhino `.3dm` geometry and OBJ files. The built-in sample is The Valentine, Calgary’s former Nexen Building.
+
+The Valentine sample uses the supplied `val.obj` footprint and envelope. Its 28 evenly spaced levels, core, glazing and façade divisions are an illustrative reconstruction for testing plans and sections. The spacing and interior layout come from modelling assumptions.
 
 ## Use
 

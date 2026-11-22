@@ -60,6 +60,7 @@
       for (const id of ['modeNav', 'modeDraw']) $(id).disabled = false;
       setMode('nav');
       viewer.setModel(model, true);
+      if (Number.isInteger(model.initialAxonometric)) viewer.axo(model.initialAxonometric);
       appliedRevision = viewer.revision;
     } else setMode('draw');
     const summary = `${label}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${model.height.toFixed(1)} m tall.`;
@@ -137,7 +138,8 @@
     if (busy) return;
     lastFile = null;
     try {
-      show(sampleModel(), 'Sample building', 'sample');
+      const model = sampleModel();
+      show(model, model.name, 'sample:valentine');
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');

@@ -500,38 +500,81 @@ function importObj(text, name, unitChoice = 'auto') {
 
 // --- Sample -----------------------------------------------------------------------------------
 
-// A small four-storey block with a core, glazing, roof and site lines, so the app can be tried
-// without a Rhino file. Dimensions are metres in Rhino coordinates.
+// The Valentine envelope comes from the supplied val.obj, converted from Y-up to Rhino Z-up.
 function sampleModel() {
-  const builder = new ModelBuilder('Sample building');
-  const structure = builder.layer('Structure', [0.62, 0.64, 0.6]),
-    walls = builder.layer('Walls', [0.82, 0.8, 0.74]),
-    glazing = builder.layer('Glazing', [0.62, 0.78, 0.86]),
-    roof = builder.layer('Roof', [0.45, 0.5, 0.47]),
-    site = builder.layer('Site', [0.7, 0.78, 0.66]);
-  const storey = 3.5,
-    levels = 4,
-    width = 24,
-    depth = 14;
-  const ground = builder.object(site, 'Ground');
-  builder.box(ground, [-20, -16, -0.3], [20, 16, 0]);
-  for (let i = 0; i < levels; i++) {
-    const z = i * storey;
-    builder.box(builder.object(structure, 'Slab ' + (i + 1)), [-width / 2, -depth / 2, z], [width / 2, depth / 2, z + 0.3]);
-    for (let cx = -width / 2 + 1; cx <= width / 2; cx += 6)
-      for (const cy of [-depth / 2 + 1, depth / 2 - 1])
-        builder.box(builder.object(structure, `Column ${i + 1}`), [cx - 0.2, cy - 0.2, z + 0.3], [cx + 0.2, cy + 0.2, z + storey]);
-    builder.box(builder.object(walls, 'Core ' + (i + 1)), [-2, -3, z + 0.3], [2, 3, z + storey]);
-    builder.box(builder.object(walls, 'End wall W ' + (i + 1)), [-width / 2, -depth / 2, z + 0.3], [-width / 2 + 0.3, depth / 2, z + storey]);
-    builder.box(builder.object(walls, 'End wall E ' + (i + 1)), [width / 2 - 0.3, -depth / 2, z + 0.3], [width / 2, depth / 2, z + storey]);
-    for (const [y0, y1] of [[-depth / 2, -depth / 2 + 0.1], [depth / 2 - 0.1, depth / 2]])
-      builder.box(builder.object(glazing, `Glazing ${i + 1}`), [-width / 2 + 0.3, y0, z + 0.9], [width / 2 - 0.3, y1, z + storey - 0.3]);
+  const builder = new ModelBuilder('The Valentine'),
+    outline = [
+      [14.57430, 14.99205],
+      [-13.51675, -12.22460],
+      [18.59455, -12.22460],
+      [18.59455, -10.64035],
+      [18.70335, -10.54887],
+      [21.51568, -13.30462],
+      [37.01052, 1.70855],
+      [34.20510, 4.43869],
+      [34.28359, 4.52703],
+      [35.81238, 4.52703],
+      [35.81238, 13.94976],
+      [18.04852, 13.83265],
+      [18.04852, 13.94976],
+      [17.50250, 13.94976],
+      [17.50250, 12.30321],
+      [17.41274, 12.23963],
+    ],
+    caps = [
+      [8, 10, 9], [10, 8, 7], [4, 15, 7], [5, 7, 6],
+      [4, 3, 15], [5, 4, 7], [10, 7, 11], [11, 7, 14],
+      [13, 12, 11], [14, 13, 11], [15, 3, 0], [15, 14, 7],
+      [3, 2, 1], [1, 0, 3],
+    ],
+    envelopeHeight = 96.34950,
+    levelCount = 28,
+    storeyHeight = envelopeHeight / levelCount,
+    slabDepth = 0.28;
+  const slabs = builder.layer('Floor slabs', [0.62, 0.65, 0.63]),
+    core = builder.layer('Core', [0.73, 0.63, 0.55]),
+    glazing = builder.layer('Glazing', [0.56, 0.73, 0.79]),
+    mullions = builder.layer('Façade mullions', [0.35, 0.42, 0.44]),
+    roof = builder.layer('Roof', [0.44, 0.49, 0.47]);
+
+  const at = (index, z) => [...outline[index], z];
+  function plate(layer, name, bottom, top) {
+    const slab = builder.object(layer, name);
+    for (const [a, b, c] of caps) {
+      builder.tri(slab, at(a, bottom), at(b, bottom), at(c, bottom));
+      builder.tri(slab, at(a, top), at(c, top), at(b, top));
+    }
+    for (let i = 0; i < outline.length; i++) {
+      const next = (i + 1) % outline.length;
+      builder.quad(slab, at(i, bottom), at(next, bottom), at(next, top), at(i, top));
+    }
   }
-  const top = levels * storey;
-  builder.box(builder.object(roof, 'Roof'), [-width / 2 - 0.6, -depth / 2 - 0.6, top], [width / 2 + 0.6, depth / 2 + 0.6, top + 0.35]);
-  builder.box(builder.object(roof, 'Plant room'), [-3, -2.5, top + 0.35], [3, 2.5, top + 3]);
-  const grid = builder.object(site, 'Grid lines');
-  for (let x = -18; x <= 18; x += 6) builder.seg(grid, [x, -15, 0.01], [x, 15, 0.01]);
-  for (let y = -12; y <= 12; y += 6) builder.seg(grid, [-18, y, 0.01], [18, y, 0.01]);
-  return registerComponents(builder.finish());
+
+  for (let level = 0; level < levelCount; level++) {
+    const bottom = level * storeyHeight,
+      sill = bottom + slabDepth,
+      head = (level + 1) * storeyHeight - (level === levelCount - 1 ? slabDepth : 0),
+      label = level === 0 ? 'Ground floor' : `Level ${level + 1}`;
+    plate(slabs, label, bottom, sill);
+    builder.box(builder.object(core, label + ' core'), [10, -2.5, sill], [17, 3.5, head]);
+    const glass = builder.object(glazing, label + ' glazing');
+    const frames = builder.object(mullions, label + ' mullions');
+    for (let i = 0; i < outline.length; i++) {
+      const next = (i + 1) % outline.length;
+      builder.quad(glass, at(i, sill), at(next, sill), at(next, head), at(i, head));
+      const [x, y] = outline[i], [endX, endY] = outline[next];
+      const bays = Math.max(1, Math.round(Math.hypot(endX - x, endY - y) / 2.8));
+      for (let bay = 1; bay < bays; bay++) {
+        const t = bay / bays;
+        const post = [x + (endX - x) * t, y + (endY - y) * t];
+        builder.seg(frames, [...post, sill], [...post, head]);
+      }
+    }
+  }
+  plate(roof, 'Roof', envelopeHeight - slabDepth, envelopeHeight);
+  builder.warn('Calgary’s former Nexen Building. The supplied shell is shown with approximate floors, core and façade divisions.');
+  const model = builder.finish();
+  model.defaultStoreyHeight = storeyHeight;
+  model.initialAxonometric = 0;
+  return registerComponents(model);
 }
