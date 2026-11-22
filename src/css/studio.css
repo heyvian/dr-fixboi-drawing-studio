@@ -146,7 +146,7 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   position: absolute;
   z-index: 2;
   inset: 0;
-  background: linear-gradient(96deg, #f2f1e9 2%, #f2f1e9f5 17%, #f2f1e9c4 28%, #f2f1e900 52%);
+  background: linear-gradient(96deg, #f2f1e9d6 1%, #f2f1e9c9 17%, #f2f1e99c 28%, #f2f1e900 55%);
 }
 .field-orbit {
   position: absolute;
@@ -166,13 +166,22 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   border: 1px solid #442d6238;
   border-radius: 50%;
 }
-#landingArtwork {
+.artwork-layer {
   position: absolute;
   z-index: 1;
-  inset: -6% -7% -8% 24%;
-  width: 83%;
-  height: 114%;
-  object-fit: contain;
+  inset: -3%;
+  width: 106%;
+  height: 106%;
+  object-fit: cover;
+}
+@media (prefers-reduced-motion: no-preference) and (any-pointer: fine) {
+  .artwork-layer { transition: transform 380ms ease-out; }
+  #landingArtwork {
+    transform: translate(calc(var(--art-x, 0) * -8px), calc(var(--art-y, 0) * -6px));
+  }
+  #landingFragments {
+    transform: translate(calc(var(--art-x, 0) * 15px), calc(var(--art-y, 0) * 11px));
+  }
 }
 .field-datum {
   position: absolute;
@@ -250,17 +259,36 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   right: 4%;
   bottom: 5%;
   box-sizing: border-box;
-  width: clamp(125px, 17vw, 240px);
+  width: clamp(170px, 27vw, 355px);
   margin: 0;
-  padding: 12px 14px 10px;
-  background: #efede4;
-  border-top: 2px solid #423356;
-  transform: rotate(7deg);
-  box-shadow: 5px 7px 0 #4233562e;
 }
-.sample-fragment img { display: block; width: 100%; height: auto; }
+.sample-sheets {
+  position: relative;
+  isolation: isolate;
+  transform: rotate(5deg);
+}
+.sample-sheets img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  border: 1px solid #51465a79;
+  box-shadow: 2px 4px 8px #29223338;
+}
+.sample-sheets .sample-back {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transform: translate(-6%, 2%) rotate(-10deg);
+}
+.sample-sheets .sample-back:nth-child(2) { transform: translate(2%, -8%) rotate(6deg); }
+.sample-sheets a { display: block; }
 .sample-fragment figcaption {
-  margin-top: 4px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 11px;
+  padding: 3px 5px;
+  background: #f2f1e9ed;
   color: #423356;
   font: 10px/1.35 var(--mono);
   text-transform: uppercase;
@@ -403,10 +431,10 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   .landing-description { font-size: 14px; }
   .landing-field::before { inset: 40% -30% -4% -24%; background-position: 65% center; }
   .landing-field::after { background: linear-gradient(#f2f1e9 1%, #f2f1e9f5 30%, #f2f1e900 68%); }
-  #landingArtwork { inset: 36% -28% -7% -20%; width: 148%; height: 71%; }
+  .artwork-layer { inset: 23% -10% -4%; width: 120%; height: 81%; object-position: 55% center; }
   .field-orbit { top: 58%; width: 73%; }
   .field-datum { top: 57%; right: 8%; }
-  .sample-fragment { bottom: 4%; right: 6%; }
+  .sample-fragment { bottom: 4%; right: 8%; width: clamp(155px, 51vw, 240px); }
   .drawing-workspace { grid-template-columns: minmax(0, 1fr); }
   .nav-stage, .drawing-stage { grid-area: 1 / 1; }
   .drawing-paper { min-height: 330px; --preview-inset: 6px; }

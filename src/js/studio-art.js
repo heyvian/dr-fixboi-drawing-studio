@@ -1,25 +1,29 @@
 // Draw one composition per visit. Both palettes use the same geometry and layer order.
 (() => {
   const landing = document.querySelector('#landingArtwork');
+  const fragments = document.querySelector('#landingFragments');
   const studio = document.createElement('canvas');
   studio.width = landing.width;
   studio.height = landing.height;
   const seed = Math.floor(Math.random() * 2 ** 32);
   const chalk = {
     ink: '#211b2e',
+    highlight: '#faf8f1',
     guides: '#4e365c',
     copper: '#b94d37',
     faces: ['#c5e1ce', '#dac9e3', '#dae952', '#7c6a92', '#ece7de']
   };
   const graphite = {
     ink: '#242424',
+    highlight: '#fafafa',
     guides: '#505050',
     copper: '#424242',
     faces: ['#c8c8c8', '#dedede', '#a2a2a2', '#686868', '#eaeaea']
   };
 
-  function draw(canvas, palette) {
-    const ctx = canvas.getContext('2d');
+  function draw(canvas, palette, foreground) {
+    let ctx = canvas.getContext('2d');
+    const foregroundContext = foreground?.getContext('2d') || ctx;
     if (!ctx) return false;
     let state = seed;
     function between(min, max) {
@@ -61,7 +65,35 @@
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
     }
-    const x = between(520, 710), y = between(330, 475), angle = between(-0.64, -0.29);
+    function sphere(x, y, radius, color, opacity) {
+      const gradient = ctx.createRadialGradient(
+        x - radius * 0.37, y - radius * 0.42, radius * 0.06,
+        x + radius * 0.06, y + radius * 0.09, radius * 1.02
+      );
+      gradient.addColorStop(0, palette.highlight);
+      gradient.addColorStop(0.37, color);
+      gradient.addColorStop(0.84, palette.guides);
+      gradient.addColorStop(1, palette.ink);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.clip();
+      ctx.translate(x, y);
+      ctx.rotate(-0.38);
+      ctx.lineWidth = 0.75;
+      ctx.strokeStyle = '#ffffff78';
+      for (const latitude of [-0.6, -0.3, 0, 0.3, 0.6]) {
+        const width = radius * Math.sqrt(1 - latitude ** 2);
+        ctx.beginPath();
+        ctx.ellipse(0, latitude * radius * 0.95, width, width * 0.22, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    const x = between(470, 715), y = between(330, 500), angle = between(-0.68, -0.24);
     const inset = (a, b) => [
       x + a * Math.cos(angle) - b * Math.sin(angle),
       y + a * Math.sin(angle) + b * Math.cos(angle)
@@ -73,7 +105,7 @@
       const radius = between(38, 410), rotation = between(-0.9, 0.55), start = between(-3, 3);
       ctx.globalAlpha = between(0.12, 0.65);
       ctx.lineWidth = i % 5 === 0 ? 1.35 : 0.65;
-      ctx.setLineDash(i % 4 === 0 ? [7, 5, 1, 5] : []);
+      ctx.setLineDash([[8, 6], [1, 5], [], [14, 5, 1, 5]][i % 4]);
       ctx.beginPath();
       ctx.ellipse(x + between(-118, 118), y + between(-100, 100), radius,
         radius * between(0.40, 0.95), rotation, start, start + between(1.4, 6.3));
@@ -96,12 +128,36 @@
     }
     ruler(-430, 223, 92);
 
+    // Satellite fragments keep the composition active at the edges of the page.
+    for (let i = 0; i < 18; i++) {
+      const px = (i % 6) * 200 + between(-55, 155);
+      const py = Math.floor(i / 6) * 300 + between(15, 280);
+      const run = between(48, 205), rise = between(-105, 110);
+      trace([[px - run * 0.35, py + rise * 0.48], [px + run, py - rise],
+        [px + run * 0.14, py + between(14, 56)]], true);
+      ctx.fillStyle = palette.faces[i % palette.faces.length];
+      ctx.globalAlpha = between(0.18, 0.46);
+      ctx.fill();
+      ctx.strokeStyle = palette.ink;
+      ctx.lineWidth = i % 5 === 0 ? 1.65 : 0.7;
+      ctx.setLineDash(i % 3 === 0 ? [2, 4] : []);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    sphere(between(155, 285), between(120, 220), between(22, 49), palette.faces[1], 0.73);
+    sphere(between(875, 1100), between(130, 285), between(39, 83), palette.faces[2], 0.91);
+    sphere(between(385, 625), between(650, 780), between(27, 62), palette.faces[0], 0.82);
+
+    ctx = foregroundContext;
+
     // Stepped, intersecting plates with clipped hatching and projected edges.
-    for (let i = 0; i < 16; i++) {
-      const a = between(-205, 75), b = (i - 8) * 27 + between(-20, 20);
+    const plates = Math.floor(between(9, 16));
+    for (let i = 0; i < plates; i++) {
+      const a = between(-280, 105), b = (i - (plates - 1) / 2) * 31 + between(-24, 24);
       const length = between(150, 410), depth = between(17, 67);
-      const points = [inset(a - 86, b + depth * 0.28), inset(a + length, b),
-        inset(a + length - 33, b + depth), inset(a + 34, b + depth * 1.36)];
+      const tip = between(20, 86), taper = between(8, 74);
+      const points = [inset(a - tip, b + depth * 0.28), inset(a + length, b),
+        inset(a + length - taper, b + depth), inset(a + 34, b + depth * 1.36)];
       trace(points, true);
       const wash = ctx.createLinearGradient(...points[0], ...points[1]);
       wash.addColorStop(0, palette.faces[(i + 3) % palette.faces.length] + '44');
@@ -126,7 +182,7 @@
           line(inset(h, b - 45), inset(h - 114, b + depth * 2 + 45));
       }
       ctx.restore();
-      const edge = [points[1], points[2], inset(a + length - 34, b + depth + 6), inset(a + length + 1, b + 6)];
+      const edge = [points[1], points[2], inset(a + length - taper, b + depth + 6), inset(a + length + 1, b + 6)];
       trace(edge, true);
       ctx.globalAlpha = 0.75;
       ctx.fillStyle = palette.ink;
@@ -142,9 +198,10 @@
     pencil(-390, -139, 904, 72);
     ctx.setLineDash([]);
 
-    for (let i = 0; i < 62; i++) {
-      const a = between(-430, 460), b = between(-280, 280);
-      const [px, py] = inset(a, b), size = i % 8 === 0 ? 8 : between(1, 3.5);
+    sphere(between(1000, 1160), between(400, 575), between(13, 30), palette.faces[3], 0.83);
+    for (let i = 0; i < 76; i++) {
+      const px = between(32, 1170), py = between(24, 870);
+      const size = i % 8 === 0 ? between(7, 15) : between(1, 4);
       ctx.globalAlpha = between(0.36, 0.9);
       ctx.strokeStyle = i % 8 === 0 ? palette.copper : palette.ink;
       ctx.lineWidth = i % 8 === 0 ? 1.8 : 0.75;
@@ -154,7 +211,35 @@
     return true;
   }
 
-  draw(landing, chalk);
+  draw(landing, chalk, fragments);
   if (draw(studio, graphite))
     document.documentElement.style.setProperty('--studio-plot', `url("${studio.toDataURL()}")`);
+
+  const dropZone = landing.closest('.drop-zone');
+  const canMove = matchMedia('(prefers-reduced-motion: no-preference) and (any-pointer: fine)');
+  function resetMotion() {
+    dropZone.style.removeProperty('--art-x');
+    dropZone.style.removeProperty('--art-y');
+  }
+  dropZone.addEventListener('pointermove', (event) => {
+    if (!canMove.matches || event.pointerType !== 'mouse') return;
+    const bounds = dropZone.getBoundingClientRect();
+    dropZone.style.setProperty('--art-x', (2 * (event.clientX - bounds.left) / bounds.width - 1).toFixed(3));
+    dropZone.style.setProperty('--art-y', (2 * (event.clientY - bounds.top) / bounds.height - 1).toFixed(3));
+  }, { passive: true });
+  dropZone.addEventListener('pointerleave', resetMotion);
+  canMove.addEventListener('change', resetMotion);
+
+  const sampleSheets = ['Axonometric', 'Elevation', 'Plan', 'Section'];
+  const frontIndex = seed % sampleSheets.length;
+  const artworkPath = (view) => 'src/assets/sample-sheets/' + view.toLowerCase() + '.svg';
+  const front = sampleSheets[frontIndex];
+  const sampleImage = document.querySelector('#sampleSheetImage');
+  const sampleLink = document.querySelector('#sampleSheetLink');
+  sampleImage.src = sampleLink.href = artworkPath(front);
+  sampleImage.alt = 'Open the full Valentine ' + front.toLowerCase() + ' sheet';
+  document.querySelector('#sampleSheetView').textContent = front;
+  document.querySelectorAll('.sample-back').forEach((sheet, i) => {
+    sheet.src = artworkPath(sampleSheets[(frontIndex + i + 1) % sampleSheets.length]);
+  });
 })();
