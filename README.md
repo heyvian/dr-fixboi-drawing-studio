@@ -16,7 +16,7 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 4. **Recapture 3D view** takes a fresh reference from the 3D camera and resets sheet panning. Set the rendering mode, clipping planes and line weights in the drawing controls.
 5. Choose Letter, Tabloid, A4, A3 or A2, and fill in the sheet title, number and revision.
 6. Save a named view to recall its framing, visible layers, clipping planes, pens and sheet setup.
-7. **Export SVG** or **Print / PDF**.
+7. Use **Export SVG** for Illustrator, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to open the browser’s print dialog.
 
 Changing the drawing scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
 
@@ -68,4 +68,5 @@ The default browser smoke test uses Microsoft Edge. With Chromium and the develo
 
 - [rhino3dm](https://github.com/mcneel/rhino3dm) and [openNURBS](https://github.com/mcneel/opennurbs) provide the browser and Node readers for Rhino geometry, layers, colours, and block data.
 - [OpenType.js](https://opentype.js.org/) converts SVG labels into outlines from the bundled [DejaVu Sans](https://dejavu-fonts.github.io/) subset. See the [OpenType.js licence](src/vendor/opentype-LICENSE.txt) and [DejaVu licence](src/vendor/DejaVu-LICENSE.txt). [FontTools](https://fonttools.readthedocs.io/) generated the subset.
+- [jsPDF](https://github.com/parallax/jsPDF) and [svg2pdf.js](https://github.com/yWorks/svg2pdf.js) produce the vector PDF. See the [jsPDF licence](src/vendor/jspdf-LICENSE.txt) and [svg2pdf.js licence](src/vendor/svg2pdf-LICENSE.txt).
 - [Playwright](https://playwright.dev/) runs the end-to-end tests in [Chromium](https://www.chromium.org/). [Node.js](https://nodejs.org/) runs the development server and importer tests.

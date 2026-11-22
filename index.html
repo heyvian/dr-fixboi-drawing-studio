@@ -4,7 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Dr. FixBoi®’s Drawing Studio</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2322221f'/%3E%3Cpath d='M5 5h22v22H5zM16 5v22M5 16h22' fill='none' stroke='%23e48773'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23e48773'/%3E%3C/svg%3E" />
+    <meta name="description" content="Generate vector plans, sections, elevations and axonometrics from Rhino and OBJ models." />
+    <meta name="theme-color" content="#211b2e" />
+    <meta name="apple-mobile-web-app-title" content="Dr. FixBoi®" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Dr. FixBoi®’s Drawing Studio" />
+    <meta property="og:description" content="Generate vector plans, sections, elevations and axonometrics from Rhino and OBJ models." />
+    <meta property="og:url" content="https://heyvian.github.io/poly-nation-drawings/" />
+    <meta property="og:image" content="https://heyvian.github.io/poly-nation-drawings/src/assets/share/social-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Dr. FixBoi’s Drawing Studio over layered architectural studies and a sample drawing sheet." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Dr. FixBoi®’s Drawing Studio" />
+    <meta name="twitter:image" content="https://heyvian.github.io/poly-nation-drawings/src/assets/share/social-card.png" />
+    <link rel="icon" sizes="any" href="src/assets/share/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="src/assets/share/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="src/assets/share/apple-touch-icon.png" />
+    <link rel="manifest" href="site.webmanifest" />
     <link rel="stylesheet" href="src/css/base.css" />
     <link rel="stylesheet" href="src/css/layout.css" />
     <link rel="stylesheet" href="src/css/drawing.css" />
@@ -14,17 +31,6 @@
   <!-- drawings-open lets the shared print rules apply to this single-workspace app. -->
   <body class="drawings-open">
     <header class="app-header">
-      <div class="app-identity" aria-label="Dr. FixBoi®’s Drawing Studio">
-        <span class="registration-mark" aria-hidden="true"></span>
-        <div>
-          <h1>Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio</p>
-        </div>
-      </div>
-      <div class="mode-tabs" role="group" aria-label="Mode">
-        <button type="button" id="modeNav" aria-pressed="true" disabled>3D Model</button>
-        <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing Sheet</button>
-      </div>
       <div class="header-actions">
         <details id="fileMenu" class="file-menu">
           <summary id="fileMenuToggle">File</summary>
@@ -48,6 +54,17 @@
         <span id="fileName" class="file-name" hidden></span>
         <input id="fileInput" type="file" accept=".3dm,.obj" hidden />
       </div>
+      <div class="mode-tabs" role="group" aria-label="Mode">
+        <button type="button" id="modeNav" aria-pressed="true" disabled>3D Model</button>
+        <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing Sheet</button>
+      </div>
+      <div class="app-identity" aria-label="Dr. FixBoi®’s Drawing Studio">
+        <span class="registration-mark" aria-hidden="true"></span>
+        <div>
+          <h1>Dr. FixBoi<sup>®</sup>’s</h1>
+          <p class="sub">Drawing studio</p>
+        </div>
+      </div>
     </header>
     <div id="importStatus" class="import-status" role="status" hidden></div>
 
@@ -62,7 +79,7 @@
             <div class="field-datum"></div>
           </div>
           <div class="landing-intro">
-            <h2><span>I plot the lines.</span><em>You bring the aura<span>.</span></em></h2>
+            <h2><span><span class="headline-phrase">Dr. FixBoi</span> <span class="headline-phrase">plots the lines.</span></span><em>You bring the aura<span>.</span></em></h2>
             <p class="landing-description">Dr. FixBoi gets the plans, sections, elevations and axonometrics out of your model and into Illustrator. I'll output the linework so you can add your special touch. Make those drawings have some <em>rizz</em> as they say.</p>
             <div class="actions">
               <button type="button" class="primary" id="openFileZone">Open Rhino or OBJ</button>
@@ -72,9 +89,9 @@
           </div>
           <figure class="sample-fragment">
             <div class="sample-sheets">
-              <img class="sample-back" src="src/assets/sample-sheets/plan.svg" alt="" width="1700" height="1100" />
+              <img class="sample-back" src="src/assets/sample-sheets/plan.png" alt="" width="850" height="550" />
               <img class="sample-back" src="src/assets/sample-sheets/elevation.svg" alt="" width="1700" height="1100" />
-              <img class="sample-back" src="src/assets/sample-sheets/section.svg" alt="" width="1700" height="1100" />
+              <img class="sample-back" src="src/assets/sample-sheets/section.png" alt="" width="850" height="550" />
               <img id="sampleSheetImage" src="src/assets/sample-sheets/axonometric-ne.svg" alt="Northeast axonometric drawing of The Optics Building" width="1700" height="1100" />
             </div>
           </figure>
@@ -119,28 +136,36 @@
             <label class="drawing-view-field">Sheet no. <input id="drawingNumber" type="text" maxlength="24" autocomplete="off" placeholder="A-101" /></label>
             <label class="drawing-view-field">Revision <input id="drawingRevision" type="text" maxlength="16" autocomplete="off" /></label>
           </div>
-          <label class="drawing-view-field"
-            >View
-            <select id="drawingView">
-              <option value="axo">Axonometric</option>
-              <option value="plan">Plan</option>
-              <option value="elevation">Elevation</option>
-              <option value="nav">Captured view</option>
-              <option value="aligned" disabled>Aligned to clipping plane</option>
-            </select>
-          </label>
-          <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
-          <label id="drawingOrbitField" class="drawing-orbit" hidden
-            >Horizontal orbit <output id="drawingOrbitAngle"></output>
-            <input id="drawingOrbit" type="range" min="0" max="359" step="1" />
-          </label>
-          <label id="drawingPlanSheetField" class="drawing-view-field" hidden
-            >Plans on sheet
-            <select id="drawingPlanSheet">
-              <option value="single">Current plan</option>
-              <option value="floors">All floor plans</option>
-            </select>
-          </label>
+          <fieldset class="view-box">
+            <legend>View</legend>
+            <label class="drawing-view-field"
+              >Projection
+              <select id="drawingView">
+                <option value="axo">Axonometric</option>
+                <option value="plan">Plan</option>
+                <option value="elevation">Elevation</option>
+                <option value="nav">Captured view</option>
+                <option value="aligned" disabled>Aligned to clipping plane</option>
+              </select>
+            </label>
+            <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
+            <div id="drawingOrientationHelp" class="orientation-help" hidden>
+              <p class="hint">Each projection remembers its own direction.</p>
+              <button id="syncViewOrientations" type="button">Sync orientation views</button>
+              <p id="orientationStatus" class="hint" role="status" hidden></p>
+            </div>
+            <label id="drawingOrbitField" class="drawing-orbit" hidden
+              >Horizontal orbit <output id="drawingOrbitAngle"></output>
+              <input id="drawingOrbit" type="range" min="0" max="359" step="1" />
+            </label>
+            <label id="drawingPlanSheetField" class="drawing-view-field" hidden
+              >Plans on sheet
+              <select id="drawingPlanSheet">
+                <option value="single">Current plan</option>
+                <option value="floors">All floor plans</option>
+              </select>
+            </label>
+          </fieldset>
           <label class="drawing-view-field"
             >Rendering
             <select id="drawingRendering">
@@ -336,17 +361,19 @@
             <button type="button" id="navSetFocus" aria-pressed="false" title="Click a point in the model to orbit around it (double-click also works)">
               Set orbit centre
             </button>
-            <span class="nav-label">View</span>
-            <span class="nav-views" role="group" aria-label="Standard views">
-              <span class="nav-axo">
-                <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
-                <button type="button" data-view="elevation">Elevation</button>
-                <span class="nav-axo-menu" id="navAxoGroup">
-                  <span class="view-compass" id="navAxoCompass" role="group" aria-label="3D view direction compass"></span>
-                </span>
-              </span>
-              <button type="button" data-view="top">Plan</button>
-            </span>
+            <fieldset class="view-box nav-view-box">
+              <legend>View</legend>
+              <div class="nav-view-preferences">
+                <div class="nav-views" role="group" aria-label="Standard views">
+                  <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
+                  <button type="button" data-view="elevation">Elevation</button>
+                  <button type="button" data-view="top">Plan</button>
+                </div>
+                <button type="button" id="syncNavOrientations" title="Each 3D projection remembers its own direction. Copy this direction to the other 3D projections.">Sync orientation views</button>
+                <p id="navOrientationStatus" class="hint" role="status" hidden></p>
+              </div>
+              <div class="view-compass" id="navAxoCompass" role="group" aria-label="3D view direction compass"></div>
+            </fieldset>
             <button type="button" class="primary" id="navToDrawing">Draw this view</button>
           </div>
           <p class="hint" id="navStatus" role="status"></p>
@@ -408,6 +435,7 @@
               Ground
             </button>
             <button type="button" class="primary" id="exportDrawing" title="Download editable SVG for Illustrator" disabled>Export SVG</button>
+            <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
             <button type="button" id="printDrawing" disabled>Print / PDF</button>
             <button type="button" id="printFloorSet" hidden>Print floor set</button>
           </div>
@@ -438,6 +466,7 @@
       <ul>
         <li><a href="https://github.com/mcneel/rhino3dm">rhino3dm</a> and <a href="https://github.com/mcneel/opennurbs">openNURBS</a> read Rhino files and their geometry and display attributes.</li>
         <li><a href="https://opentype.js.org/">OpenType.js</a> converts sheet labels to vector outlines using <a href="https://dejavu-fonts.github.io/">DejaVu Sans</a>, subset with <a href="https://fonttools.readthedocs.io/">FontTools</a>.</li>
+        <li><a href="https://github.com/parallax/jsPDF">jsPDF</a> and <a href="https://github.com/yWorks/svg2pdf.js">svg2pdf.js</a> create vector PDFs. <a href="src/vendor/jspdf-LICENSE.txt">jsPDF licence</a> · <a href="src/vendor/svg2pdf-LICENSE.txt">svg2pdf.js licence</a></li>
         <li><a href="https://nodejs.org/">Node.js</a> runs the development server. <a href="https://playwright.dev/">Playwright</a> and <a href="https://www.chromium.org/">Chromium</a> run the browser tests.</li>
       </ul>
       <p><a href="src/vendor/opentype-LICENSE.txt">OpenType.js licence</a> · <a href="src/vendor/DejaVu-LICENSE.txt">DejaVu licence</a></p>

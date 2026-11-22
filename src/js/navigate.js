@@ -25,6 +25,8 @@ const viewer = (() => {
     onPick = null,
     marker = null,
     lastAxo = 5, // compass index of the most recent axo view (default south-west)
+    lastPlan = 0,
+    lastElevation = 0,
     activeAxo = 5, // the axo view currently shown, or null once the camera has moved elsewhere
     onMove = null,
     // Which linework to show. Edges come from the triangle meshes; curves are the imported line objects.
@@ -112,11 +114,21 @@ const viewer = (() => {
     if (!buffers.length) lo.fill(-1), hi.fill(1);
     center = lo.map((v, i) => (v + hi[i]) / 2);
     radius = Math.max(Math.hypot(...hi.map((v, i) => v - lo[i])) / 2, 1);
-    edges = buildEdges(buffers.filter((item) => item.key !== 'lines').map((item) => item.data), radius * 1e-6);
+    const edgeMeshes = buffers.filter(({ key }) => key !== 'lines').flatMap(({ key, data }) => {
+      if (!model.studioFloorCount) return [data];
+      // Keep the sample's small interior objects shaded in 3D. Drawing views still derive their edges.
+      return mesh.groups.flatMap((group, i) => {
+        if (group.studio) return [];
+        const start = group[key], end = mesh.groups[i + 1]?.[key] ?? data.length;
+        return end > start ? [data.subarray(start, end)] : [];
+      });
+    });
+    edges = buildEdges(edgeMeshes, radius * 1e-6);
     edgeKey = '';
     if (resetView) {
       focus = [...center];
       lastAxo = activeAxo = 5;
+      lastPlan = lastElevation = 0;
       camera.az = HOME.az;
       camera.el = HOME.el;
       zoomExtents(false);
@@ -229,7 +241,8 @@ const viewer = (() => {
   // Jump to a standard view, turning about the focus point and centring it. The zoom is kept.
   function preset(name) {
     if (name === 'iso') return axo();
-    if (name === 'elevation') return elevation(compassHeading(camera.az));
+    if (name === 'elevation') return elevation();
+    if (name === 'top') return plan();
     Object.assign(camera, PRESETS[name]);
     activeAxo = null;
     centerPreset();
@@ -251,18 +264,26 @@ const viewer = (() => {
     centerPreset();
   }
 
-  function elevation(heading) {
+  function elevation(heading = lastElevation) {
+    lastElevation = heading;
     activeAxo = null;
     camera.az = compassAzimuth(heading);
     camera.el = 0;
     centerPreset();
   }
 
-  function plan(heading) {
+  function plan(heading = lastPlan) {
+    lastPlan = heading;
     activeAxo = null;
     camera.az = compassAzimuth(heading) - Math.PI;
     camera.el = TOP;
     centerPreset();
+  }
+
+  function syncOrientations() {
+    const heading = compassHeading(camera.az + (camera.el > Math.PI / 2 - 0.001 ? Math.PI : 0));
+    lastPlan = lastElevation = heading;
+    lastAxo = heading / 45;
   }
 
   const basisNow = () => orbitBasis(camera);
@@ -504,6 +525,7 @@ const viewer = (() => {
     axo,
     elevation,
     plan,
+    syncOrientations,
     set onMove(fn) {
       onMove = fn;
     },

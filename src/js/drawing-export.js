@@ -72,3 +72,36 @@ function outlineDrawingLabels(root) {
   for (const node of root.querySelectorAll('[font-family], [font-size], [font-weight]'))
     for (const attribute of ['font-family', 'font-size', 'font-weight']) node.removeAttribute(attribute);
 }
+let pdfTools;
+async function createBluebeamPdf(svg, { width, height }) {
+  function loadScript(name) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'src/vendor/' + name;
+      script.onload = resolve;
+      script.onerror = () => {
+        script.remove();
+        reject(Error('The PDF exporter could not be loaded.'));
+      };
+      document.head.append(script);
+    });
+  }
+  pdfTools ??= (async () => {
+    if (!window.jspdf?.jsPDF) await loadScript('jspdf.umd.min.js');
+    if (!window.jspdf.jsPDF.API.svg) await loadScript('svg2pdf.umd.min.js');
+    return window.jspdf.jsPDF;
+  })().catch((error) => {
+    pdfTools = null;
+    throw error;
+  });
+  const Pdf = await pdfTools;
+  const pdf = new Pdf({
+    orientation: width > height ? 'landscape' : 'portrait',
+    unit: 'in',
+    format: [width, height],
+    compress: true
+  });
+  pdf.setProperties({ title: svg.querySelector('title').textContent, creator: 'Drawing Studio' });
+  await pdf.svg(svg, { x: 0, y: 0, width, height, loadExternalStyleSheets: false });
+  return pdf.output('blob');
+}

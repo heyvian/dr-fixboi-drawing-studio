@@ -9,6 +9,7 @@ const openDrawingWorkspace = (() => {
     loadingLabel = $('drawingLoadingLabel'),
     progress = $('drawingProgress'),
     exportButton = $('exportDrawing'),
+    bluebeamButton = $('exportBluebeam'),
     printButton = $('printDrawing'),
     storageKey = 'poly-nation-drawings-standalone-v1',
     svgNS = 'http://www.w3.org/2000/svg',
@@ -56,7 +57,7 @@ const openDrawingWorkspace = (() => {
       view: 'axo',
       orbitLocked: true,
       azimuth: 5,
-      viewHeading: null,
+      viewHeadings: {},
       elevation: 225,
       storey: 3.5,
       bodies: 'layer',
@@ -76,10 +77,12 @@ const openDrawingWorkspace = (() => {
     savedViews = [],
     base = null, // the 3D view snapshot the "From 3D view" drawing is framed from
     geometry = null,
+    geometryFloor = null,
     rendered = null,
     timer = 0,
     renderRevision = 0,
     printingFloorSet = false,
+    exportingPdf = false,
     placing = false,
     drag = null;
   try {
@@ -166,7 +169,14 @@ const openDrawingWorkspace = (() => {
   function restoreSnapshot(snapshot) {
     base = structuredClone(snapshot.base);
     // Sheets saved before the projection toolbar used independent compass directions.
-    settings = { orbitLocked: false, viewHeading: null, ...structuredClone(snapshot.settings), pens: drawingPens(snapshot.settings.pens) };
+    const { viewHeading, viewHeadings, ...stored } = structuredClone(snapshot.settings);
+    settings = {
+      orbitLocked: false,
+      ...stored,
+      viewHeadings: viewHeadings ?? (Number.isFinite(viewHeading)
+        ? { axo: viewHeading, plan: viewHeading, elevation: viewHeading } : {}),
+      pens: drawingPens(snapshot.settings.pens)
+    };
     titleFields.forEach((field, i) => { field.value = snapshot.titles?.[i] ?? ''; });
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
@@ -283,7 +293,7 @@ const openDrawingWorkspace = (() => {
   function viewCamera() {
     const top = Math.PI / 2 - 1e-7;
     const orbit = lockedOrbit();
-    const heading = settings.viewHeading;
+    const heading = settings.viewHeadings[settings.view];
     const azimuth = heading == null ? orbit?.az : compassAzimuth(heading);
     if (settings.view === 'plan')
       return { az: heading == null ? orbit?.az ?? -Math.PI / 2 : compassAzimuth(heading) - Math.PI, el: top };
@@ -299,18 +309,20 @@ const openDrawingWorkspace = (() => {
     return { az: azimuth ?? compassAzimuth(settings.azimuth * 45), el: 0.57 };
   }
   const compass = $('drawingCompass');
+  const orientationStatus = $('orientationStatus');
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
   for (const button of sheetViewButtons)
     button.onclick = () => selectSheetView(button.dataset.sheetView, true);
   const showHeading = createViewCompass(compass, (heading) => {
-    settings.viewHeading = heading;
+    settings.viewHeadings[settings.view] = heading;
+    orientationStatus.hidden = true;
     syncCompass();
     queueDrawing();
   });
   function syncCompass() {
     const elevation = settings.view === 'elevation';
     const plan = settings.view === 'plan';
-    compass.hidden = settings.view !== 'axo' && !elevation && !plan;
+    compass.hidden = $('drawingOrientationHelp').hidden = settings.view !== 'axo' && !elevation && !plan;
     compass.setAttribute('aria-label', plan ? 'Plan orientation compass' : 'View direction compass');
     $('drawingOrbitField').hidden = !elevation;
     const viewPicker = $('drawingView');
@@ -332,6 +344,14 @@ const openDrawingWorkspace = (() => {
     $('placeDrawingPlane').disabled = allPlans();
     $('centerDrawing').disabled = allPlans();
   }
+  $('syncViewOrientations').onclick = () => {
+    const heading = compassHeading(viewCamera().az + (settings.view === 'plan' ? Math.PI : 0));
+    settings.viewHeadings = { axo: heading, plan: heading, elevation: heading };
+    orientationStatus.hidden = false;
+    orientationStatus.textContent = 'Direction copied to Axonometric, Plan, and Elevation.';
+    syncCompass();
+    queueDrawing();
+  };
 
   function floorPlans() {
     const selected = currentPlane();
@@ -563,6 +583,27 @@ const openDrawingWorkspace = (() => {
     return tile;
   }
 
+  function geometryFor(camera, planes, seeThrough, bodies) {
+    let floor = null;
+    if (sourceModel.studioFloorCount) {
+      if (!seeThrough && planes.length === 0 && sourceModel.studioEnclosed()) floor = -1;
+      if (Math.abs(camera.el - Math.PI / 2) < 1e-6 && sourceModel.studioSlabsVisible()) {
+        const topCuts = planes.filter(plane => !plane.flip && plane.normal[1] === 1);
+        if (topCuts.length) {
+          const level = Math.floor(Math.min(...topCuts.map(plane => plane.offset)) / sourceModel.defaultStoreyHeight);
+          floor = level >= sourceModel.studioFloorCount ? null : Math.max(-1, level);
+        }
+      }
+    }
+    if (!geometry || geometryFloor !== floor || drawingBodyMode !== bodies) {
+      drawingBodyMode = bodies;
+      const includeStudioFloor = floor === null ? undefined : (level) => level === floor;
+      geometry = drawingGeometry(sourceModel.assemble(includeStudioFloor), sourceModel);
+      geometryFloor = floor;
+    }
+    return geometry;
+  }
+
   async function renderFloorSheet(paper, camera, revision) {
     const width = Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
       height = Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
@@ -597,7 +638,7 @@ const openDrawingWorkspace = (() => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (!currentRender(revision)) return null;
       const frame = renderDrawing(
-        geometry,
+        geometryFor(camera, planes, settings.glazing, settings.bodies),
         camera,
         planes,
         paper,
@@ -651,12 +692,8 @@ const openDrawingWorkspace = (() => {
     try {
       if (!currentRender(revision)) return;
       const paper = paperDimensions();
-      // Geometry is welded once per import, layer-visibility change or outline-body setting.
-      if (!geometry) {
-        drawingBodyMode = settings.bodies;
-        geometry = drawingGeometry(sourceModel.assemble(), sourceModel);
-      }
       const camera = viewCamera(),
+        clips = drawingClips(settings.planes),
         framing = settings.view === 'nav' ? base : settings.view === 'aligned' ? null : lockedOrbit();
       const groundButton = $('groundDrawing');
       groundButton.disabled = Math.abs(Math.cos(camera.el)) <= 0.01;
@@ -667,9 +704,9 @@ const openDrawingWorkspace = (() => {
       const next = allPlans()
         ? await renderFloorSheet(paper, camera, revision)
         : renderDrawing(
-            geometry,
+            geometryFor(camera, clips, settings.glazing, settings.bodies),
             camera,
-            drawingClips(settings.planes),
+            clips,
             paper,
             settings.scale,
             settings.glazing,
@@ -722,7 +759,7 @@ const openDrawingWorkspace = (() => {
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
       syncPenScaleNote(denominator);
-      exportButton.disabled = printButton.disabled = !rendered.populated;
+      setDrawingOutputAvailable(rendered.populated);
       $('printFloorSet').disabled = printingFloorSet;
       resizePaperPreview();
       setDrawingProgress('');
@@ -749,12 +786,16 @@ const openDrawingWorkspace = (() => {
           : allPlans()
             ? 'Floor plans share a drawing scale.'
             : base && (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
-              ? 'Using the captured 3D orbit. Drag the drawing or use the arrow keys to pan the sheet.'
+              ? 'Using the captured 3D framing. Drag the drawing or use the arrow keys to pan the sheet.'
               : 'Drag the drawing or use the arrow keys to reposition it.';
+  }
+  function setDrawingOutputAvailable(available) {
+    exportButton.disabled = printButton.disabled = !available;
+    bluebeamButton.disabled = !available || exportingPdf;
   }
   function queueDrawing() {
     saveDrawing();
-    exportButton.disabled = printButton.disabled = true;
+    setDrawingOutputAvailable(false);
     $('printFloorSet').disabled = true;
     clearTimeout(timer);
     timer = 0;
@@ -1019,13 +1060,15 @@ const openDrawingWorkspace = (() => {
     if (view === 'plan' && settings.view !== 'plan') settings.planSheet = 'single';
     settings.view = view;
     settings.orbitLocked = lockOrbit;
+    orientationStatus.hidden = true;
     stopPlacing();
     syncCompass();
     queueDrawing();
   }
   $('drawingView').onchange = (event) => selectSheetView(event.target.value);
   $('drawingOrbit').oninput = (event) => {
-    settings.viewHeading = event.target.valueAsNumber;
+    settings.viewHeadings.elevation = event.target.valueAsNumber;
+    orientationStatus.hidden = true;
     syncCompass();
     queueDrawing();
   };
@@ -1215,7 +1258,7 @@ const openDrawingWorkspace = (() => {
     sheet.focus({ preventScroll: true });
     sheet.setPointerCapture(event.pointerId);
     sheet.dataset.dragging = 'true';
-    exportButton.disabled = printButton.disabled = true;
+    setDrawingOutputAvailable(false);
   });
   sheet.addEventListener('pointermove', (event) => {
     if (drag?.id !== event.pointerId) return;
@@ -1232,7 +1275,7 @@ const openDrawingWorkspace = (() => {
         (drag.x * 25.4) / DRAWING_PIXELS_PER_INCH,
         (drag.y * 25.4) / DRAWING_PIXELS_PER_INCH
       );
-    else if (loading.hidden) exportButton.disabled = printButton.disabled = !rendered.populated;
+    else if (loading.hidden) setDrawingOutputAvailable(rendered.populated);
     drag = null;
     sheet.dataset.dragging = 'false';
   });
@@ -1272,7 +1315,11 @@ const openDrawingWorkspace = (() => {
     target.append(item.cloneNode(true));
   }
 
-  function vectorDrawingSheet() {
+  function vectorDrawingSheet({
+    includePaper = exportPaper.checked,
+    includeAnnotations = exportAnnotations.checked,
+    chunkSize = exportPaths.value === 'individual' ? 1 : 256
+  } = {}) {
     const { width, height } = paperDimensions();
     const root = svgElement('svg', {
       version: '1.1',
@@ -1280,14 +1327,13 @@ const openDrawingWorkspace = (() => {
       height: height + 'in',
       viewBox: sheet.getAttribute('viewBox')
     });
-    const chunkSize = exportPaths.value === 'individual' ? 1 : 256;
     const title = svgElement('title', {}),
       layers = new Map();
     title.textContent = `${footerTitle.textContent} · 1:${rendered.denominator}`;
     root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:inkscape', layerNS);
     root.setAttribute('data-poly-nation-export', '2');
     root.append(title);
-    if (exportPaper.checked) root.append(paperLayer.cloneNode(true));
+    if (includePaper) root.append(paperLayer.cloneNode(true));
 
     // SVG groups contain geometrically cropped artwork so Illustrator needs no clipping masks.
     function addRegion(source, crop, placement, number, makeFills) {
@@ -1326,12 +1372,12 @@ const openDrawingWorkspace = (() => {
         addRegion(area, crop, placement, i, rendered.regionFills[i]);
         const caption = label.cloneNode(true);
         caption.setAttribute('transform', placement);
-        if (exportAnnotations.checked) labels.append(caption);
+        if (includeAnnotations) labels.append(caption);
       });
     } else addRegion(sheetArtwork, clipRect.cloneNode(true), null, 0, rendered.exportFills);
 
     root.append(...[...layers.values(), labels].filter((layer) => layer.hasChildNodes()));
-    if (exportAnnotations.checked) {
+    if (includeAnnotations) {
       root.append(footer.cloneNode(true));
       outlineDrawingLabels(root);
     }
@@ -1349,13 +1395,36 @@ const openDrawingWorkspace = (() => {
     return root;
   }
 
-  exportButton.onclick = () => {
+  function drawingFilename(extension) {
     const view = allPlans() ? 'floor-plans' : settings.view;
+    return `${fileStem(sheetTitle())}-${view}-${settings.paper}-1-${rendered.denominator}.${extension}`;
+  }
+  exportButton.onclick = () => {
     downloadBlob(
       new XMLSerializer().serializeToString(vectorDrawingSheet()),
       'image/svg+xml',
-      `${fileStem(sheetTitle())}-${view}-${settings.paper}-1-${rendered.denominator}.svg`
+      drawingFilename('svg')
     );
+  };
+  bluebeamButton.onclick = async () => {
+    exportingPdf = bluebeamButton.disabled = true;
+    bluebeamButton.textContent = 'Preparing PDF…';
+    bluebeamButton.setAttribute('aria-busy', 'true');
+    try {
+      const file = drawingFilename('pdf');
+      const paper = paperDimensions();
+      const svg = vectorDrawingSheet({ includePaper: true, includeAnnotations: true, chunkSize: 256 });
+      const pdf = await createBluebeamPdf(svg, paper);
+      downloadBlob(pdf, 'application/pdf', file);
+    } catch (error) {
+      console.error('PDF export failed', error);
+      if (loading.hidden) status.textContent = 'The PDF could not be prepared. Try exporting again.';
+    } finally {
+      exportingPdf = false;
+      bluebeamButton.disabled = exportButton.disabled;
+      bluebeamButton.textContent = 'PDF for Bluebeam';
+      bluebeamButton.removeAttribute('aria-busy');
+    }
   };
   printButton.onclick = () => {
     const { width, height } = paperDimensions();
@@ -1368,17 +1437,18 @@ const openDrawingWorkspace = (() => {
       pages = $('floorPrintPages'),
       paper = paperDimensions(),
       plans = floorPlans(),
-      model = geometry,
+      model = sourceModel,
       camera = viewCamera(),
-      { scale, glazing, mode, pens } = settings;
+      { scale, glazing, mode, pens, bodies } = settings;
     printingFloorSet = button.disabled = true;
     button.textContent = 'Preparing floor set…';
     try {
       const sheets = [];
       for (const { planes, label } of plans) {
         await new Promise((resolve) => setTimeout(resolve, 0));
+        if (sourceModel !== model) return;
         const frame = renderDrawing(
-          model,
+          geometryFor(camera, planes, glazing, bodies),
           camera,
           planes,
           paper,
@@ -1461,7 +1531,7 @@ const openDrawingWorkspace = (() => {
       titleFields[0].value = model.name;
       titleFields[1].value = titleFields[2].value = '';
       settings.planSheet = 'single';
-      settings.viewHeading = null;
+      settings.viewHeadings = {};
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
       try {
         const working = JSON.parse(localStorage.getItem(activeStorageKey()));
@@ -1487,7 +1557,7 @@ const openDrawingWorkspace = (() => {
     if (select) {
       settings.view = 'nav';
       settings.orbitLocked = true;
-      settings.viewHeading = null;
+      orientationStatus.hidden = true;
       settings.placement = { x: 0, y: 0, ground: false, center: false };
       stopPlacing();
     }

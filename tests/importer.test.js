@@ -62,7 +62,7 @@ const { importRhino, importObj, sampleModel, DRAWING_COMPONENTS } = sandbox.api;
   const sample = sampleModel();
   assert(sample.layers.length >= 4 && sample.height > 10);
   assert.strictEqual(sample.name, 'The Optics Building');
-  for (const name of ['Studio furniture', 'Dozing students', 'Paper, cans and study models', 'Recycling']) {
+  for (const name of ['Studio furniture', 'Studio students', 'Paper, supplies and study models', 'Recycling']) {
     assert(sample.layers.find((layer) => layer.key === name)?.triangles > 0, name);
   }
   console.log('importer tests passed');

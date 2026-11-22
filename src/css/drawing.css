@@ -126,12 +126,28 @@
 .nav-stage[hidden], .nav-only[hidden] { display: none; }
 .nav-stage .hint { margin: 0; }
 .nav-views { display: inline-flex; gap: 4px; }
-.nav-axo-menu[hidden] { display: none; }
-/* Keep projection directions together underneath the view controls. */
-.nav-axo { position: relative; display: inline-block; }
-.nav-axo-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; display: flex; gap: 6px; align-items: center;
-  padding: 6px 8px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.15); white-space: nowrap; }
-.nav-label { font-size: 0.8rem; color: var(--muted, #5b665f); align-self: center; }
+.view-box {
+ min-inline-size: 0;
+ margin: 0 0 10px;
+ padding: 5px 9px 9px;
+ border: 1px solid var(--control-border);
+ background: var(--paper);
+}
+.view-box legend { padding-inline: 4px; font-weight: 700; }
+.view-box .orientation-help .hint { margin: 5px 0; }
+.nav-view-box {
+ display: flex;
+ flex-wrap: wrap;
+ align-items: center;
+ gap: 8px;
+ max-width: 100%;
+ margin: 0;
+}
+.nav-view-box .view-compass {
+ grid-template-columns: repeat(3, 32px);
+ grid-template-rows: repeat(3, 32px);
+}
+.nav-view-preferences { display: grid; justify-items: start; gap: 5px; }
 .nav-canvas-frame { flex: 1; min-height: 320px; position: relative; }
 #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab;
   background: #f4f7f2; border: 1px solid var(--line); touch-action: none; }

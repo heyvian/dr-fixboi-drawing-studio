@@ -212,19 +212,26 @@
       $('navCreaseOut').textContent = `${event.target.value}°`;
       viewer.setLines({ creaseAngle: Number(event.target.value) });
     };
+    const orientationStatus = $('navOrientationStatus');
+    $('syncNavOrientations').onclick = () => {
+      viewer.syncOrientations();
+      orientationStatus.textContent = 'Direction copied to the 3D projections.';
+      orientationStatus.hidden = false;
+    };
     const showHeading = createViewCompass($('navAxoCompass'), (heading) => {
-      if (viewer.activeAxo !== null) viewer.axo(heading / 45);
-      else if (viewer.snapshot().el > Math.PI / 2 - 0.001) viewer.plan(heading);
-      else viewer.elevation(heading);
+      const el = viewer.snapshot().el;
+      if (el > Math.PI / 2 - 0.001) viewer.plan(heading);
+      else if (el === 0 && viewer.activeAxo === null) viewer.elevation(heading);
+      else viewer.axo(heading / 45);
     });
     const syncNavCompass = () => {
+      orientationStatus.hidden = true;
       const { az, el } = viewer.snapshot();
       const axo = viewer.activeAxo !== null;
       const elevation = el === 0 && !axo;
       const plan = el > Math.PI / 2 - 0.001 && !axo;
-      $('navAxoGroup').hidden = !axo && !elevation && !plan;
       $('navAxoCompass').setAttribute('aria-label', plan ? '3D plan orientation compass' : '3D view direction compass');
-      showHeading(compassHeading(az + (plan ? Math.PI : 0)), plan);
+      showHeading(axo || elevation || plan ? compassHeading(az + (plan ? Math.PI : 0)) : null, plan);
       document.querySelector('#navStage [data-view="iso"]').setAttribute('aria-pressed', String(axo));
       document.querySelector('#navStage [data-view="elevation"]').setAttribute('aria-pressed', String(elevation));
       document.querySelector('#navStage [data-view="top"]').setAttribute('aria-pressed', String(plan));

@@ -6,7 +6,8 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const types = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-  '.jsx': 'text/plain', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.wasm': 'application/wasm'
+  '.jsx': 'text/plain', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.wasm': 'application/wasm',
+  '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json'
 };
 const vendor = '/vendor/rhino3dm/';
 const readerFiles = new Set(['rhino3dm.module.min.js', 'rhino3dm.wasm']);
