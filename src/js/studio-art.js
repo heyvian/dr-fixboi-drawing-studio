@@ -21,15 +21,18 @@
     faces: ['#c8c8c8', '#dedede', '#a2a2a2', '#686868', '#eaeaea']
   };
 
+  function seededRange(state) {
+    return (min, max) => {
+      state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+      return min + (max - min) * (state / 2 ** 32);
+    };
+  }
+
   function draw(canvas, palette, foreground) {
     let ctx = canvas.getContext('2d');
     const foregroundContext = foreground?.getContext('2d') || ctx;
     if (!ctx) return false;
-    let state = seed;
-    function between(min, max) {
-      state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-      return min + (max - min) * (state / 2 ** 32);
-    }
+    const between = seededRange(seed);
     function trace(points, close = false) {
       ctx.beginPath();
       ctx.moveTo(...points[0]);
@@ -242,6 +245,28 @@
     paperContext.putImageData(grain, 0, 0);
     document.documentElement.style.setProperty('--paper-grain', `url("${paper.toDataURL()}")`);
   }
+
+  function drawPaperFibres(stack) {
+    const stock = document.createElement('canvas');
+    stock.width = 384;
+    stock.height = 248;
+    const ctx = stock.getContext('2d');
+    if (!ctx) return;
+    const between = seededRange(seed ^ 0x164c72);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 980; i++) {
+      const x = between(0, stock.width), y = between(0, stock.height);
+      const length = between(0.6, 4), rise = length * between(-0.8, 0.8);
+      ctx.strokeStyle = i % 3 ? '#c6dce527' : '#0b243e45';
+      ctx.lineWidth = between(0.35, 0.95);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + length / 2, y + rise / 2 + between(-0.8, 0.8), x + length, y + rise);
+      ctx.stroke();
+    }
+    stack.style.setProperty('--sample-paper-fibres', `url("${stock.toDataURL()}")`);
+  }
+  drawPaperFibres(document.querySelector('.sample-sheets'));
 
   const dropZone = landing.closest('.drop-zone');
   const canMove = matchMedia('(prefers-reduced-motion: no-preference) and (any-pointer: fine)');
