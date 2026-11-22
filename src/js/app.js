@@ -3,6 +3,8 @@
 
 (() => {
   const status = $('importStatus'),
+    fileMenu = $('fileMenu'),
+    fileMenuToggle = $('fileMenuToggle'),
     dropZone = $('dropZone'),
     fileInput = $('fileInput'),
     controls = $('drawingControls'),
@@ -176,8 +178,28 @@
     }
   }
 
+  function closeFileMenu(restoreFocus = false) {
+    if (!fileMenu.open) return;
+    fileMenu.open = false;
+    if (restoreFocus) fileMenuToggle.focus();
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (!fileMenu.contains(event.target)) closeFileMenu();
+  });
+  fileMenu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && fileMenu.open) {
+      event.preventDefault();
+      closeFileMenu(true);
+    }
+  });
+  fileMenu.addEventListener('focusout', (event) => {
+    if (event.relatedTarget && !fileMenu.contains(event.relatedTarget)) closeFileMenu();
+  });
+  $('openCredits').onclick = () => {
+    closeFileMenu(true);
+    $('studioCredits').showModal();
+  };
   // Controls
-  $('openCredits').onclick = () => $('studioCredits').showModal();
   $('modeNav').onclick = () => mode !== 'nav' && setMode('nav');
   $('modeDraw').onclick = () => mode !== 'draw' && setMode('draw');
   $('navToDrawing').onclick = () => setMode('draw', true);
@@ -222,8 +244,16 @@
   $('navStatus').textContent = 'Frame the part of the model you want to draw, then choose Draw this view.';
   if (!viewer.ok) $('modeNav').hidden = $('modeDraw').hidden = true;
   setMode(viewer.ok ? 'nav' : 'draw');
-  for (const id of ['openFile', 'openFileZone']) $(id).onclick = () => fileInput.click();
-  for (const id of ['loadSample', 'loadSampleZone']) $(id).onclick = openSample;
+  $('openFile').onclick = () => {
+    closeFileMenu(true);
+    fileInput.click();
+  };
+  $('openFileZone').onclick = () => fileInput.click();
+  $('loadSample').onclick = () => {
+    closeFileMenu(true);
+    openSample();
+  };
+  $('loadSampleZone').onclick = openSample;
   fileInput.onchange = () => {
     openFile(fileInput.files[0]);
     fileInput.value = '';

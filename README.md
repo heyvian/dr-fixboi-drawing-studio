@@ -10,7 +10,7 @@ The Optics Building uses the supplied `val.obj` shell as a starting point, with 
 
 Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no build step. Opening `index.html` directly also works in browsers that allow local files.
 
-1. Click **Open Rhino file…** (or drag a `.3dm` / `.obj` onto the page), or **Load sample**.
+1. Choose **Open model…** or **Load sample** in the **File** menu. You can also drag a `.3dm` or `.obj` file onto the page.
 2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo, Elevation and Plan buttons with their direction compass for standard views. Double-click a point (or use **Set orbit centre** and click) to make it the orbit centre, marked by a red crosshair: orbiting turns around it and the standard-view buttons centre on it, keeping your zoom. **Zoom extents** resets the centre to the middle of the model. The 3D view is orthographic, so it matches the drawing projection.
 3. Choose **Draw this view** (or the **Drawing Sheet** tab) to capture the 3D view. Use the buttons above the sheet to switch between Captured view, Axonometric, Plan, and Elevation. These projections use the captured orbit direction and target. Drag the sheet or use the arrow keys to pan it independently of the 3D camera. Use the compass to set the drawing’s direction without moving the 3D camera. A selected clipping plane also provides its own projection.
 4. **Recapture 3D view** takes a fresh reference from the 3D camera and resets sheet panning. Set the rendering mode, clipping planes and line weights in the drawing controls.

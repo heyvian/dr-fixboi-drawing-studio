@@ -20,7 +20,10 @@ const { makeFixture } = require('./fixture');
 
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
 
+  await page.locator('#fileMenuToggle').press('Enter');
+  assert(await page.locator('#loadSample').isVisible());
   await page.click('#loadSample');
+  assert.strictEqual(await page.locator('#fileMenu[open]').count(), 0);
   // A new model opens in 3D navigation. Orbit and zoom, then draw that view.
   await page.waitForSelector('#navStage:not([hidden])');
   await page.waitForTimeout(500);
@@ -211,6 +214,7 @@ const { makeFixture } = require('./fixture');
   }
 
   await page.reload();
+  await page.click('#fileMenuToggle');
   await page.click('#loadSample');
   await page.click('#modeDraw');
   assert.strictEqual(await page.inputValue('#drawingNumber'), 'A-101');

@@ -26,21 +26,26 @@
         <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing Sheet</button>
       </div>
       <div class="header-actions">
-        <button type="button" id="openCredits">Credits</button>
+        <details id="fileMenu" class="file-menu">
+          <summary id="fileMenuToggle">File</summary>
+          <div class="file-menu-panel">
+            <button type="button" class="primary" id="openFile">Open model…</button>
+            <button type="button" id="loadSample">Load sample</button>
+            <label class="drawing-view-field">
+              <span>Model units</span>
+              <select id="unitSelect" title="Units used when a file does not state them, or to override them">
+                <option value="auto">From file</option>
+                <option value="mm">Millimetres</option>
+                <option value="cm">Centimetres</option>
+                <option value="m">Metres</option>
+                <option value="in">Inches</option>
+                <option value="ft">Feet</option>
+              </select>
+            </label>
+            <button type="button" id="openCredits">Credits</button>
+          </div>
+        </details>
         <span id="fileName" class="file-name" hidden></span>
-        <label class="drawing-view-field">
-          <span class="hint">Model units</span>
-          <select id="unitSelect" title="Units used when a file does not state them, or to override them">
-            <option value="auto">From file</option>
-            <option value="mm">Millimetres</option>
-            <option value="cm">Centimetres</option>
-            <option value="m">Metres</option>
-            <option value="in">Inches</option>
-            <option value="ft">Feet</option>
-          </select>
-        </label>
-        <button type="button" class="primary" id="openFile">Open model…</button>
-        <button type="button" id="loadSample">Load sample</button>
         <input id="fileInput" type="file" accept=".3dm,.obj" hidden />
       </div>
     </header>
