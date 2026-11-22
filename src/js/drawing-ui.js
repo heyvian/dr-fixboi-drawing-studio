@@ -10,6 +10,7 @@ const openDrawingWorkspace = (() => {
     loadingLabel = $('drawingLoadingLabel'),
     progress = $('drawingProgress'),
     exportButton = $('exportDrawing'),
+    confirmSvgExport = $('confirmSvgExport'),
     bluebeamButton = $('exportBluebeam'),
     printButton = $('printDrawing'),
     storageKey = 'poly-nation-drawings-standalone-v1',
@@ -820,7 +821,7 @@ const openDrawingWorkspace = (() => {
               : 'Drag the drawing or use the arrow keys to reposition it.';
   }
   function setDrawingOutputAvailable(available) {
-    exportButton.disabled = printButton.disabled = !available;
+    exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = !available;
     bluebeamButton.disabled = !available || exportingPdf;
   }
   function queueDrawing() {
@@ -1572,12 +1573,26 @@ const openDrawingWorkspace = (() => {
     const paper = customPapers.get(settings.paper);
     return `${fileStem(sheetTitle())}-${view}-${paper ? fileStem(paper.name) : settings.paper}-1-${rendered.denominator}.${extension}`;
   }
+  const svgExportDialog = $('svgExportDialog'), svgExportError = $('svgExportError');
   exportButton.onclick = () => {
-    downloadBlob(
-      new XMLSerializer().serializeToString(convertDrawingSvgToPoints(vectorDrawingSheet())),
-      'image/svg+xml',
-      drawingFilename('svg')
-    );
+    svgExportError.hidden = true;
+    svgExportDialog.showModal();
+  };
+  $('cancelSvgExport').onclick = () => svgExportDialog.close();
+  $('svgExportForm').onsubmit = (event) => {
+    event.preventDefault();
+    if (confirmSvgExport.disabled) return;
+    let svg, filename;
+    try {
+      svg = new XMLSerializer().serializeToString(convertDrawingSvgToPoints(vectorDrawingSheet()));
+      filename = drawingFilename('svg');
+    } catch (error) {
+      console.error('SVG export failed', error);
+      svgExportError.hidden = false;
+      return;
+    }
+    svgExportDialog.close();
+    downloadBlob(svg, 'image/svg+xml', filename);
   };
   bluebeamButton.onclick = async () => {
     exportingPdf = bluebeamButton.disabled = true;

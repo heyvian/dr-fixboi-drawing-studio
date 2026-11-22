@@ -30,8 +30,6 @@
 .drawing-pen-row { display: grid; grid-template-columns: minmax(0, 1fr) 51px 32px; align-items: center; gap: 4px 6px; margin: 8px 0; }
 .drawing-pen-row span { grid-column: 1/-1; }
 .drawing-pen-row input { width: 100%; min-width: 0; }
-.drawing-export-help .hint { margin: 7px 0; }
-.drawing-export-help a { color: var(--accent); }
 .view-compass {
  display: grid;
  grid-template-columns: repeat(3, 42px);

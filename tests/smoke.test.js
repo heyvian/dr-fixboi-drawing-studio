@@ -19,6 +19,13 @@ const { makeFixture } = require('./fixture');
   await page.goto(appUrl);
 
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
+  const svgDialog = page.getByRole('dialog', { name: 'Export SVG' });
+  async function downloadSvg() {
+    if (!(await svgDialog.isVisible())) await page.click('#exportDrawing');
+    const [file] = await Promise.all([page.waitForEvent('download'), page.click('#confirmSvgExport')]);
+    await svgDialog.waitFor({ state: 'hidden' });
+    return file;
+  }
 
   await page.locator('#fileMenuToggle').press('Enter');
   assert(await page.locator('#loadSample').isVisible());
@@ -215,11 +222,30 @@ const { makeFixture } = require('./fixture');
   assert.strictEqual(await firstLayer.isChecked(), false);
   await page.waitForFunction(() => document.querySelector('#drawingSheet').textContent.includes('A-101 · REV B'));
 
-  await page.locator('.drawing-export-help summary').click();
+  let svgDownloads = 0;
+  page.on('download', (file) => {
+    if (file.suggestedFilename().endsWith('.svg')) svgDownloads++;
+  });
+  await page.click('#exportDrawing');
+  assert(await svgDialog.isVisible());
+  assert.strictEqual(await svgDialog.getByRole('listitem').count(), 5);
+  const [script] = await Promise.all([
+    page.waitForEvent('download'),
+    svgDialog.getByRole('link', { name: 'Download the Illustrator script' }).click()
+  ]);
+  assert.match(script.suggestedFilename(), /\.jsx$/);
+  assert.match(await fs.promises.readFile(await script.path(), 'utf8'), /File\.openDialog/);
   await page.uncheck('#exportPaper');
   await page.uncheck('#exportAnnotations');
   await page.selectOption('#exportPaths', 'individual');
-  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+  await page.click('#cancelSvgExport');
+  assert(await svgDialog.isHidden());
+  assert.strictEqual(svgDownloads, 0, 'opening the options and cancelling does not download an SVG');
+  await page.click('#exportDrawing');
+  assert.strictEqual(await page.isChecked('#exportPaper'), false);
+  assert.strictEqual(await page.isChecked('#exportAnnotations'), false);
+  assert.strictEqual(await page.inputValue('#exportPaths'), 'individual');
+  const download = await downloadSvg();
   const svg = await fs.promises.readFile(await download.path(), 'utf8');
   assert.match(download.suggestedFilename(), /-a3-1-\d+\.svg$/);
   const exported = await page.evaluate((source) => {
@@ -294,7 +320,7 @@ const { makeFixture } = require('./fixture');
     const previewWidth = await page.locator('#drawingLinework').evaluate((stroke) =>
       Number(stroke.getAttribute('stroke-width')) * 250 / stroke.ownerSVGElement.viewBox.baseVal.width);
     assert(Math.abs(previewWidth - 0.50) < 1e-6, `preview width stays at 0.50 mm at 1:${scale}`);
-    const [penDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+    const penDownload = await downloadSvg();
     assert(penDownload.suggestedFilename().endsWith(`-1-${scale}.svg`));
     const penSvg = await fs.promises.readFile(await penDownload.path(), 'utf8');
     const exportedWidths = await page.evaluate((source) => {
@@ -311,7 +337,7 @@ const { makeFixture } = require('./fixture');
   await page.getByRole('spinbutton', { name: 'Overall silhouette width (mm)' }).fill('0.82');
   await page.getByRole('spinbutton', { name: 'Overall silhouette width (mm)' }).press('Tab');
   await page.check('#drawingGroundLine');
-  const [customDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+  const customDownload = await downloadSvg();
   assert.match(customDownload.suggestedFilename(), /-Desk_proof-1-\d+\.svg$/);
   const customSvg = await fs.promises.readFile(await customDownload.path(), 'utf8');
   assert.match(customSvg, /data-weight-mm="0.82"[^>]+data-layer="Overall silhouette"/);
@@ -334,8 +360,9 @@ const { makeFixture } = require('./fixture');
     await page.click('#modeDraw');
     await page.selectOption('#drawingRendering', 'flat');
     await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3);
+    await page.click('#exportDrawing');
     await page.check('#exportAnnotations');
-    const [rhinoDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+    const rhinoDownload = await downloadSvg();
     const rhinoSvg = await fs.promises.readFile(await rhinoDownload.path(), 'utf8');
     assert.match(rhinoSvg, /fill="#c83c3c"/, 'The authored Rhino layer colour survives into vector fills');
     assert.match(rhinoSvg, /data-layer="Title and scale"/);
@@ -352,7 +379,9 @@ const { makeFixture } = require('./fixture');
     assert(Math.abs(scaleBar.length - scaleBar.expected) < 1e-6, 'exported geometry and scale bar share physical point coordinates');
     await page.selectOption('#drawingPenMode', 'rhino');
     await page.locator('#drawingRhinoLayerWeights').getByText('No print').waitFor();
-    const [plotDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+    await page.click('#exportDrawing');
+    await page.uncheck('#exportAnnotations');
+    const plotDownload = await downloadSvg();
     const plotSvg = await fs.promises.readFile(await plotDownload.path(), 'utf8');
     assert.match(plotSvg, /data-layer="Rhino print width · 0.66 mm"/);
     const plotStroke = await page.evaluate((source) => {
@@ -360,7 +389,6 @@ const { makeFixture } = require('./fixture');
       return Number(svg.querySelector('[data-layer="Rhino print width · 0.66 mm"] path').getAttribute('stroke-width'));
     }, plotSvg);
     assert(Math.abs(plotStroke - 0.66 * 72 / 25.4) < 1e-6);
-    await page.uncheck('#exportAnnotations');
     await page.selectOption('#drawingPaper', 'tabloid');
     await page.selectOption('#drawingOrientation', 'landscape');
     const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportBluebeam')]);
@@ -383,8 +411,12 @@ const { makeFixture } = require('./fixture');
   assert.strictEqual(await page.inputValue('#drawingPaper'), 'a3');
   assert.strictEqual(await page.locator('#drawingPlanes button[aria-pressed=true]').count(), 1);
   assert.strictEqual(await firstLayer.isChecked(), false);
+  await page.click('#exportDrawing');
   assert.strictEqual(await page.isChecked('#exportPaper'), false);
+  assert.strictEqual(await page.isChecked('#exportAnnotations'), false);
   assert.strictEqual(await page.inputValue('#exportPaths'), 'individual');
+  await page.keyboard.press('Escape');
+  assert(await svgDialog.isHidden());
 
   assert.deepStrictEqual(errors, []);
   await browser.close();

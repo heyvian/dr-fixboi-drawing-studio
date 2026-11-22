@@ -24,7 +24,9 @@ In **Line weights**, camera-distance assignment shows which depths each pen cove
 
 ### Illustrator
 
-The exported SVG contains editable vector artwork, organized by pen weight and treatment with a separate section-cut layer when present. It uses the chosen paper dimensions and physical point coordinates, so strokes retain their on-sheet weight when opened at the exported size. Artwork is trimmed to the sheet or floor bounds before export. Titles, floor captions and scale labels are vector outlines, so Illustrator needs no matching installed font. The bundled outline font covers Latin, Greek, Cyrillic and common drawing symbols. Open **SVG and Illustrator** in the sidebar to remove the background or annotations, or to export individually selectable strokes. Grouped strokes produce a lighter document for complex models. To turn the SVG groups into native Illustrator layers, download the JSX script from the same panel, use **File → Scripts → Other Script** in Illustrator, and select the exported SVG. The script then prompts you to save a native AI file.
+The exported SVG contains editable vector artwork, organized by pen weight and treatment with a separate section-cut layer when present. It uses the chosen paper dimensions and physical point coordinates, so strokes retain their on-sheet weight when opened at the exported size. Artwork is trimmed to the sheet or floor bounds before export. Titles, floor captions and scale labels are vector outlines, so Illustrator needs no matching installed font. The bundled outline font covers Latin, Greek, Cyrillic and common drawing symbols.
+
+Click **Export SVG** to choose whether to include the paper and annotations and whether strokes should be grouped or individually selectable. Grouped strokes produce a lighter document for complex models. Click **Export** in the dialog to download the SVG. Drawing Studio remembers these options in the current browser. The dialog also has the Illustrator layer script and five steps for turning the SVG into a named-layer AI file.
 
 ## Rhino import (best effort)
 

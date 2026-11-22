@@ -222,23 +222,6 @@
 
 
           <label class="check"><input type="checkbox" id="drawingGlazing" /> See through glazing</label>
-          <details class="calc-details drawing-export-help">
-            <summary>SVG and Illustrator</summary>
-            <label class="check"><input id="exportPaper" type="checkbox" checked /> Include paper background</label>
-            <label class="check"><input id="exportAnnotations" type="checkbox" checked /> Include title, scale and floor labels</label>
-            <label class="drawing-view-field">
-              Path editing
-              <select id="exportPaths">
-                <option value="batch">Grouped strokes</option>
-                <option value="individual">Individually selectable strokes</option>
-              </select>
-            </label>
-            <p class="hint">
-              Open the SVG in Illustrator for editable groups. To create named layers and save an
-              AI file, run the script from File → Scripts → Other Script and select the SVG.
-            </p>
-            <a href="tools/Poly-Nation-SVG-to-Layers.jsx" download>Download Illustrator layer script</a>
-          </details>
         </aside>
 
         <div class="nav-stage" id="navStage">
@@ -441,7 +424,7 @@
               </div>
             </details>
             <div class="toolbar-group export-tools" role="group" aria-label="Export and print">
-              <button type="button" class="primary" id="exportDrawing" title="Download editable SVG for Illustrator" disabled>Export SVG</button>
+              <button type="button" class="primary" id="exportDrawing" aria-haspopup="dialog" aria-controls="svgExportDialog" disabled>Export SVG</button>
               <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
               <button type="button" id="printDrawing" disabled>Print / PDF</button>
             </div>
@@ -467,6 +450,39 @@
       </section>
     </main>
     <div id="floorPrintPages" aria-hidden="true"></div>
+    <dialog id="svgExportDialog" aria-labelledby="svgExportTitle">
+      <form id="svgExportForm" method="dialog">
+        <h2 id="svgExportTitle">Export SVG</h2>
+        <div class="svg-export-content">
+          <div class="svg-export-options">
+            <label class="check"><input id="exportPaper" type="checkbox" checked /> Include paper background</label>
+            <label class="check"><input id="exportAnnotations" type="checkbox" checked /> Include title, scale and floor labels</label>
+            <label class="drawing-view-field">
+              Path editing
+              <select id="exportPaths">
+                <option value="batch">Grouped strokes</option>
+                <option value="individual">Individually selectable strokes</option>
+              </select>
+            </label>
+          </div>
+          <section class="illustrator-steps" aria-labelledby="illustratorStepsTitle">
+            <h3 id="illustratorStepsTitle">Create named layers in Illustrator</h3>
+            <ol>
+              <li><a href="tools/Poly-Nation-SVG-to-Layers.jsx" download>Download the Illustrator script</a>.</li>
+              <li>Click <strong>Export</strong> to save the SVG.</li>
+              <li>In Illustrator, use <strong>File → Scripts → Other Script</strong> and select the downloaded <code>.jsx</code>.</li>
+              <li>When prompted, select the SVG you exported.</li>
+              <li>Choose where to save the <code>.ai</code> file, then click <strong>Save</strong>.</li>
+            </ol>
+          </section>
+        </div>
+        <p id="svgExportError" role="alert" hidden>The SVG could not be prepared. Try exporting again.</p>
+        <div class="dialog-actions">
+          <button type="button" id="cancelSvgExport">Cancel</button>
+          <button type="submit" class="primary" id="confirmSvgExport" disabled>Export</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="customPaperDialog" aria-labelledby="customPaperTitle">
       <form id="customPaperForm">
         <h2 id="customPaperTitle">Save a paper size</h2>
@@ -478,7 +494,7 @@
         </div>
         <p class="hint">Each side can be 4–48 inches or 101.6–1219.2 mm. Saving with the same name updates that size.</p>
         <p id="customPaperError" role="alert" hidden></p>
-        <div class="custom-paper-actions"><button type="button" id="cancelCustomPaper">Cancel</button><button type="submit" class="primary">Save and use</button></div>
+        <div class="dialog-actions"><button type="button" id="cancelCustomPaper">Cancel</button><button type="submit" class="primary">Save and use</button></div>
       </form>
     </dialog>
     <dialog id="studioCredits" aria-labelledby="creditsTitle">
