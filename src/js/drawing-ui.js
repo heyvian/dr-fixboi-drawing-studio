@@ -102,7 +102,6 @@ const openDrawingWorkspace = (() => {
             : 225,
         storey: Number.isFinite(saved.storey) ? clamp(saved.storey, 1, 20) : 3.5,
         bodies: ['layer', 'object', 'none'].includes(saved.bodies) ? saved.bodies : 'layer',
-        planSheet: saved.planSheet === 'floors' ? 'floors' : 'single',
         azimuth:
           Number.isInteger(saved.azimuth) && compassPoints[saved.azimuth] ? saved.azimuth : 5,
         paper: Object.hasOwn(paperSizes, saved.paper) ? saved.paper : 'letter',
@@ -341,6 +340,7 @@ const openDrawingWorkspace = (() => {
         )
       );
     $('drawingPlanSheetField').hidden = $('printFloorSet').hidden = settings.view !== 'plan';
+    $('drawingPlanSheet').value = settings.planSheet;
     sheet.classList.toggle('planset', allPlans());
     $('placeDrawingPlane').disabled = allPlans();
   }
@@ -944,7 +944,6 @@ const openDrawingWorkspace = (() => {
     $('drawingView').value = settings.view;
     $('drawingStorey').value = Number(settings.storey.toFixed(3));
     $('drawingBodies').value = settings.bodies;
-    $('drawingPlanSheet').value = settings.planSheet;
     syncCompass();
     $('drawingRendering').value = settings.mode;
     syncPenControls();
@@ -999,6 +998,7 @@ const openDrawingWorkspace = (() => {
 
   function selectSheetView(view, lockOrbit = settings.orbitLocked) {
     if (settings.view === view && settings.orbitLocked === lockOrbit) return;
+    if (view === 'plan' && settings.view !== 'plan') settings.planSheet = 'single';
     settings.view = view;
     settings.orbitLocked = lockOrbit;
     stopPlacing();
@@ -1438,6 +1438,7 @@ const openDrawingWorkspace = (() => {
       }
       titleFields[0].value = model.name;
       titleFields[1].value = titleFields[2].value = '';
+      settings.planSheet = 'single';
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
       try {
         const working = JSON.parse(localStorage.getItem(activeStorageKey()));

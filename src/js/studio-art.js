@@ -36,6 +36,24 @@
       trace([start, end]);
       ctx.stroke();
     }
+    function pencil(a, b, length, drift) {
+      const points = [];
+      for (let i = 0; i <= 12; i++)
+        points.push(inset(a + length * i / 12, b + drift * i / 12 + between(-1.7, 1.7)));
+      trace(points);
+      ctx.stroke();
+    }
+    function ruler(a, b, count) {
+      ctx.strokeStyle = palette.ink;
+      ctx.globalAlpha = 0.49;
+      ctx.lineWidth = 0.8;
+      line(inset(a, b), inset(a + count * 9, b));
+      for (let i = 0; i <= count; i++) {
+        const x = a + i * 9;
+        const tick = i % 10 === 0 ? 21 : i % 5 === 0 ? 13 : 6;
+        line(inset(x, b), inset(x, b + tick));
+      }
+    }
     function disk(x, y, radius, fill, opacity) {
       ctx.globalAlpha = opacity;
       ctx.fillStyle = fill;
@@ -70,6 +88,13 @@
       line(inset(-505, i * 22), inset(525, i * 22 + between(-15, 15)));
       line(inset(i * 36, -315), inset(i * 36 + 80, 315));
     }
+    ctx.strokeStyle = palette.guides;
+    for (let i = 0; i < 46; i++) {
+      ctx.globalAlpha = between(0.10, 0.36);
+      ctx.lineWidth = between(0.45, 1.25);
+      pencil(between(-515, 110), between(-315, 315), between(120, 610), between(-90, 110));
+    }
+    ruler(-430, 223, 92);
 
     // Stepped, intersecting plates with clipped hatching and projected edges.
     for (let i = 0; i < 16; i++) {
@@ -78,7 +103,11 @@
       const points = [inset(a - 86, b + depth * 0.28), inset(a + length, b),
         inset(a + length - 33, b + depth), inset(a + 34, b + depth * 1.36)];
       trace(points, true);
-      ctx.fillStyle = palette.faces[i % palette.faces.length];
+      const wash = ctx.createLinearGradient(...points[0], ...points[1]);
+      wash.addColorStop(0, palette.faces[(i + 3) % palette.faces.length] + '44');
+      wash.addColorStop(0.4, palette.faces[i % palette.faces.length]);
+      wash.addColorStop(1, palette.faces[(i + 1) % palette.faces.length]);
+      ctx.fillStyle = wash;
       ctx.globalAlpha = between(0.48, 0.94);
       ctx.fill();
       ctx.globalAlpha = 0.75;
@@ -91,6 +120,11 @@
       ctx.globalAlpha = i % 3 ? 0.34 : 0.62;
       for (let h = -360; h < 520; h += 6)
         line(inset(h, b - 45), inset(h + 106, b + depth * 2 + 45));
+      if (i % 3 === 0) {
+        ctx.globalAlpha *= 0.65;
+        for (let h = -360; h < 580; h += 11)
+          line(inset(h, b - 45), inset(h - 114, b + depth * 2 + 45));
+      }
       ctx.restore();
       const edge = [points[1], points[2], inset(a + length - 34, b + depth + 6), inset(a + length + 1, b + 6)];
       trace(edge, true);
@@ -98,6 +132,15 @@
       ctx.fillStyle = palette.ink;
       ctx.fill();
     }
+
+    ruler(-286, -204, 52);
+    ctx.strokeStyle = palette.copper;
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([51, 5, 3, 5]);
+    pencil(-540, 107, 1070, -93);
+    pencil(-390, -139, 904, 72);
+    ctx.setLineDash([]);
 
     for (let i = 0; i < 62; i++) {
       const a = between(-430, 460), b = between(-280, 280);
