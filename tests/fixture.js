@@ -6,17 +6,19 @@ async function makeFixture() {
   const r = await rhino3dm();
   const doc = new r.File3dm();
   doc.settings().modelUnitSystem = r.UnitSystem.Millimeters;
-  const layer = (name, color, visible = true) => {
+  const layer = (name, color, visible = true, plotWeight = 0) => {
     const l = new r.Layer();
     l.name = name;
     l.color = color;
     l.visible = visible;
+    l.plotWeight = plotWeight;
     doc.layers().add(l);
   };
-  layer('Walls', { r: 200, g: 60, b: 60, a: 255 });
+  layer('Walls', { r: 200, g: 60, b: 60, a: 255 }, true, 0.66);
   layer('Glazing', { r: 90, g: 150, b: 200, a: 255 });
   layer('Hidden', { r: 0, g: 0, b: 0, a: 255 }, false);
-  layer('Lines', { r: 0, g: 0, b: 0, a: 255 });
+  layer('Lines', { r: 0, g: 0, b: 0, a: 255 }, true, 0.16);
+  layer('Construction', { r: 0, g: 0, b: 0, a: 255 }, true, -1);
   const on = (layerIndex, name = '') => {
     const a = new r.ObjectAttributes();
     a.layerIndex = layerIndex;
@@ -44,6 +46,7 @@ async function makeFixture() {
   poly.add(mm(4), 0, 0);
   doc.objects().add(poly.toPolylineCurve(), on(3, 'Polyline'));
   doc.objects().addLine([0, 0, 0], [mm(5), mm(5), 0], on(3, 'Line'));
+  doc.objects().addLine([0, mm(4), mm(1)], [mm(1), mm(4), mm(1)], on(4, 'No print line'));
   doc.objects().addCircle(new r.Circle([0, 0, 0], mm(2)), on(3, 'Circle'));
   doc.objects().add(mesh, on(2, 'Hidden mesh'));
 

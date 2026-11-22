@@ -29,7 +29,7 @@ function drawingExportStrokes(data, crop, strokeWidth) {
       if (line) strokes.push('M' + coordinate(line[0]) + 'L' + coordinate(line[1]));
       continue;
     }
-    // Crossing pencil curves are short. Sample them finely, then join consecutive clipped pieces.
+    // Sample crossing quadratic curves, then join consecutive clipped pieces.
     let previous = start, last = '', path = '';
     for (let step = 1; step <= 16; step++) {
       const t = step / 16;

@@ -27,6 +27,10 @@ const { importRhino, importObj, sampleModel, DRAWING_COMPONENTS } = sandbox.api;
   assert(!keys.includes('Hidden'), 'hidden layers are skipped');
   assert(keys.includes('Walls') && keys.includes('Lines'));
   assert.strictEqual(model.layers.find((l) => l.key === 'Walls').triangles, 12, 'mesh box = 12 triangles');
+  assert.strictEqual(model.layers.find((l) => l.key === 'Walls').plotWeight, 0.66);
+  assert.strictEqual(model.layers.find((l) => l.key === 'Glazing').plotWeight, 0);
+  assert.strictEqual(model.layers.find((l) => l.key === 'Construction').plotWeight, -1);
+  assert(!model.assemble(undefined, (layer) => layer.plotWeight >= 0).groups.some((group) => group.layer === 'Construction'));
   assert(model.warnings.some((w) => /no saved render mesh/.test(w)), 'unmeshed Breps are reported');
   // Millimetre file: the 4 m box and 8 m Brep must come out in metres, 3 m tall.
   assert(Math.abs(model.height - 3) < 1e-6, 'height ' + model.height);

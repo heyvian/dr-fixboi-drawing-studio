@@ -38,9 +38,8 @@
  grid-template-rows: repeat(3, 35px);
  gap: 3px;
 }
-.drawing-compass { margin: 8px 0; }
 .view-compass[hidden], .drawing-controls [hidden], #printFloorSet[hidden] { display: none; }
-.drawing-orbit { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin: 7px 0 12px; }
+.drawing-orbit { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; }
 .drawing-orbit input { grid-column: 1/-1; width: 100%; margin: 0; }
 .drawing-plane-offset-tools { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .drawing-plane-offset-tools input { min-width: 0; }
@@ -132,7 +131,10 @@
  background: var(--paper);
 }
 .view-box legend { padding-inline: 4px; font-weight: 700; }
-.view-box .orientation-help .hint { margin: 5px 0; }
+.drawing-view-box { display: grid; gap: 11px; justify-items: start; padding: 9px; }
+.drawing-view-box > label { width: 100%; }
+.drawing-view-box .orientation-help { width: 100%; padding-block: 9px; border-block: 1px solid var(--line); }
+.drawing-view-box .orientation-help .hint { margin: 5px 0 0; }
 .nav-view-box {
  display: flex;
  flex-wrap: wrap;

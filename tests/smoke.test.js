@@ -187,11 +187,20 @@ const { makeFixture } = require('./fixture');
   await page.fill('#drawingRevision', 'B');
   await page.selectOption('#drawingPaper', 'a3');
   await page.selectOption('#drawingScale', 'auto');
+  await page.click('#clipMenuToggle');
+  assert(await page.locator('#drawingNoPlanes').isVisible());
   await page.click('#addDrawingPlane');
+  assert.strictEqual(await page.locator('#drawingView option[value="aligned"]').isDisabled(), false);
+  await page.click('#alignDrawingPlane');
+  assert.strictEqual(await page.inputValue('#drawingView'), 'aligned');
+  await projection('axo');
   await page.locator('.drawing-pen-settings summary').click();
   assert(await page.locator('.sheet-toolbar #drawingDistanceFrom').isVisible());
   await page.locator('#drawingDistanceFrom').press('ArrowRight');
   const nearWeight = await page.inputValue('#drawingDistanceFrom');
+  assert.deepStrictEqual(await page.locator('#drawingDepthBands li span:last-child').allTextContents(),
+    ['0%–34%', '34%–67%', '67%–100%']);
+  assert.strictEqual(await page.isChecked('#drawingAdaptWeights'), false);
   const firstLayer = page.locator('#layerList input[type=checkbox]').first();
   await firstLayer.uncheck();
   await page.click('#saveView');
@@ -244,7 +253,9 @@ const { makeFixture } = require('./fixture');
   assert(exported.strokes.length > 10 && exported.strokes.every((stroke) => (stroke.match(/M/g) || []).length === 1));
 
   // Toggle the first layer off and on again.
+  await page.click('#clipMenuToggle');
   await page.getByRole('button', { name: 'Remove plane 1' }).click();
+  await page.locator('#clipMenuToggle').press('Escape');
   await firstLayer.check();
   await firstLayer.uncheck();
   await page.waitForTimeout(500);
@@ -262,6 +273,34 @@ const { makeFixture } = require('./fixture');
   });
   assert.strictEqual(await page.locator('#savedViews option').count(), 1, 'saved views are isolated by model');
   await shot('obj');
+
+  await page.selectOption('#drawingPaper', 'custom');
+  await page.fill('#customPaperName', 'Desk proof');
+  await page.fill('#customPaperWidth', '250');
+  await page.fill('#customPaperHeight', '400');
+  await page.getByRole('button', { name: 'Save and use' }).click();
+  assert.strictEqual(await page.inputValue('#drawingOrientation'), 'portrait');
+  await projection('elevation');
+  await page.selectOption('#drawingBodies', 'none');
+  await page.click('#penMenuToggle');
+  assert.strictEqual(await page.isChecked('#drawingGroundLine'), false);
+  await page.check('#drawingSilhouette');
+  await page.getByRole('spinbutton', { name: 'Overall silhouette width (mm)' }).fill('0.82');
+  await page.getByRole('spinbutton', { name: 'Overall silhouette width (mm)' }).press('Tab');
+  await page.check('#drawingGroundLine');
+  const [customDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+  assert.match(customDownload.suggestedFilename(), /-Desk_proof-1-\d+\.svg$/);
+  const customSvg = await fs.promises.readFile(await customDownload.path(), 'utf8');
+  assert.match(customSvg, /data-weight-mm="0.82"[^>]+data-layer="Overall silhouette"/);
+  assert.match(customSvg, /data-weight-mm="0.25"[^>]+data-layer="Ground line"/);
+  const customBox = customSvg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/).slice(1).map(Number);
+  assert(customBox.every((value, index) => Math.abs(value - [250, 400][index] * 72 / 25.4) < 1e-6));
+  await page.uncheck('#drawingSilhouette');
+  await page.uncheck('#drawingGroundLine');
+  await page.selectOption('#drawingBodies', 'layer');
+  await page.check('#drawingComponentOutlines');
+  await page.locator('#drawingSheet [data-layer="Key outlines"] path').waitFor();
+  await page.uncheck('#drawingComponentOutlines');
 
   if (process.env.APP_URL) {
     const { bytes } = await makeFixture();
@@ -288,17 +327,29 @@ const { makeFixture } = require('./fixture');
       };
     }, rhinoSvg);
     assert(Math.abs(scaleBar.length - scaleBar.expected) < 1e-6, 'exported geometry and scale bar share physical point coordinates');
+    await page.selectOption('#drawingPenMode', 'rhino');
+    await page.locator('#drawingRhinoLayerWeights').getByText('No print').waitFor();
+    const [plotDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+    const plotSvg = await fs.promises.readFile(await plotDownload.path(), 'utf8');
+    assert.match(plotSvg, /data-layer="Rhino print width · 0.66 mm"/);
+    const plotStroke = await page.evaluate((source) => {
+      const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
+      return Number(svg.querySelector('[data-layer="Rhino print width · 0.66 mm"] path').getAttribute('stroke-width'));
+    }, plotSvg);
+    assert(Math.abs(plotStroke - 0.66 * 72 / 25.4) < 1e-6);
     await page.uncheck('#exportAnnotations');
     await page.selectOption('#drawingPaper', 'tabloid');
+    await page.selectOption('#drawingOrientation', 'landscape');
     const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportBluebeam')]);
     assert.match(pdfDownload.suggestedFilename(), /-tabloid-1-\d+\.pdf$/);
     const pdf = await fs.promises.readFile(await pdfDownload.path(), 'latin1');
     assert.match(pdf, /^%PDF-/);
-    assert.match(pdf, /\/MediaBox \[0 0 1224\. 792\.\]/);
+    assert.strictEqual(pdf.match(/\/MediaBox \[[^\]]+\]/)?.[0], '/MediaBox [0 0 1224. 792.]');
     assert.doesNotMatch(pdf, /\/Subtype \/Image\b/);
   }
 
   await page.reload();
+  assert.strictEqual(await page.locator('#customPaperChoices option').textContent(), 'Desk proof · 250 × 400 mm');
   await page.click('#fileMenuToggle');
   await page.click('#loadSample');
   await page.click('#modeDraw');

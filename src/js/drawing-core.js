@@ -44,7 +44,7 @@ function drawingGeometry(mesh, model) {
     }
     return indices.get(key);
   }
-  if (first < 0) return { points, faces, edges: [], lines };
+  if (first < 0) return { points, faces, edges: [], lines, model };
   function groupAt(kind) {
     // The mesh stores layer boundaries as offsets into vertex buffers, one range per kind.
     let index = first;
@@ -331,6 +331,16 @@ const DRAWING_PEN_PRESETS = [
 ];
 const DRAWING_PEN_LIMITS = { min: 0.05, max: 2, step: 0.01 };
 const DRAWING_PEN_REFERENCE_SCALE = 250;
+const RHINO_DEFAULT_PLOT_WIDTH = 0.25;
+const rhinoPlotWidth = ({ plotWeight }) => plotWeight === -1 || plotWeight > 0 ? plotWeight : RHINO_DEFAULT_PLOT_WIDTH;
+const DRAWING_DETAIL_PENS = {
+  silhouette: { id: 'drawingSilhouette', label: 'Overall silhouette', width: 0.70,
+    help: 'Emphasizes the visible outer edge of the model.' },
+  componentOutlines: { id: 'drawingComponentOutlines', label: 'Key outlines', width: 0.50,
+    help: 'Emphasizes the visible edges of each layer or object. Choose the grouping under Layers → Outlines follow.' },
+  groundLine: { id: 'drawingGroundLine', label: 'Ground line', width: 0.25,
+    help: 'Marks the model’s base in elevations and vertical sections.' }
+};
 
 function drawingPenScale(pens, denominator) {
   // Preserve more of the stroke width than a direct geometric scale would. The bounds keep
@@ -348,6 +358,32 @@ function printedDrawingPenWidths(pens, denominator) {
   );
 }
 
+function drawingPensByWeight(widths) {
+  return widths.map((_, index) => index).sort((a, b) => widths[b] - widths[a]);
+}
+
+function drawingPenDepthRange(pens) {
+  return [Math.min(pens.distanceFrom, pens.distanceTo - 5), Math.max(pens.distanceTo, pens.distanceFrom + 5)];
+}
+
+function drawingPenPalette(pens, model, denominator) {
+  if (pens.mode !== 'rhino') {
+    return { widths: printedDrawingPenWidths(pens, denominator), colors: pens.colors,
+      ranked: drawingPensByWeight(pens.widths), layerIndices: null };
+  }
+  const weightsByLayer = model.layers.filter((layer) => layer.visible && rhinoPlotWidth(layer) > 0)
+    .map((layer) => [layer.key, rhinoPlotWidth(layer)]);
+  const widths = [...new Set(weightsByLayer.map(([, width]) => width))];
+  if (!widths.length) widths.push(RHINO_DEFAULT_PLOT_WIDTH);
+  const indicesByWeight = new Map(widths.map((width, index) => [width, index]));
+  return {
+    widths,
+    colors: widths.map(() => pens.colors[0]),
+    ranked: drawingPensByWeight(widths),
+    layerIndices: new Map(weightsByLayer.map(([key, width]) => [key, indicesByWeight.get(width)]))
+  };
+}
+
 function drawingPens(saved = {}) {
   // Older sheet settings have no pen set. Validate each saved value independently.
   const count =
@@ -355,19 +391,25 @@ function drawingPens(saved = {}) {
       ? saved.widths.length
       : 3;
   return {
-    mode: ['distance', 'component', 'profile'].includes(saved?.mode) ? saved.mode : 'distance',
-    style: saved?.style === 'sketch' ? 'sketch' : 'standard',
+    mode: ['distance', 'component', 'profile', 'rhino'].includes(saved?.mode) ? saved.mode : 'distance',
     adaptToScale: saved?.adaptToScale === true,
     silhouette: saved?.silhouette === true,
     componentOutlines: saved?.componentOutlines === true,
+    groundLine: saved?.groundLine === true,
+    detailPens: Object.fromEntries(Object.entries(DRAWING_DETAIL_PENS).map(([key, { width }]) => {
+      const pen = saved?.detailPens?.[key];
+      return [key, {
+        width: Number.isFinite(pen?.width) ? clamp(pen.width, DRAWING_PEN_LIMITS.min, DRAWING_PEN_LIMITS.max) : width,
+        color: paintHex(pen?.color) || paintHex(saved?.colors?.[0]) || '#43534c'
+      }];
+    })),
     // Which mesh edges become strokes; all on with a 10° crease angle matches the original drawings.
     curves: saved?.curves !== false,
     silhouettes: saved?.silhouettes !== false,
     openEdges: saved?.openEdges !== false,
     creases: saved?.creases !== false,
     creaseAngle: Number.isFinite(saved?.creaseAngle) ? clamp(Math.round(saved.creaseAngle), 5, 90) : 10,
-    // Camera-distance weights: nearest `distanceFrom`% of the visible depth range keeps the heaviest
-    // pen, the farthest (100 - `distanceTo`)% the lightest; the pens share the span in between.
+    // Divide this part of the visible depth evenly among the pens and extend the end bands to 0 and 100%.
     distanceFrom: Number.isFinite(saved?.distanceFrom) ? clamp(Math.round(saved.distanceFrom), 0, 90) : 0,
     distanceTo: Number.isFinite(saved?.distanceTo) ? clamp(Math.round(saved.distanceTo), 10, 100) : 100,
     paper: paintHex(saved?.paper) || '#ffffff',

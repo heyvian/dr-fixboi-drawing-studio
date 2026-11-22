@@ -3,6 +3,7 @@
 const openDrawingWorkspace = (() => {
   const panel = $('drawingsPhase'),
     sheet = $('drawingSheet'),
+    paperPicker = $('drawingPaper'),
     paperFrame = $('drawingPaperFrame'),
     status = $('drawingStatus'),
     loading = $('drawingLoading'),
@@ -35,6 +36,35 @@ const openDrawingWorkspace = (() => {
       a2: [420 / 25.4, 594 / 25.4]
     },
     viewNames = ['axo', 'plan', 'elevation', 'nav', 'aligned'];
+  const customPaperStorageKey = storageKey + '-paper-sizes';
+  const customPapers = new Map();
+  const validPaperSide = (inches) => Number.isFinite(inches) && inches >= 4 - 1e-8 && inches <= 48 + 1e-8;
+  function registerCustomPaper(preset) {
+    customPapers.set(preset.id, preset);
+    paperSizes[preset.id] = [Math.min(preset.width, preset.height), Math.max(preset.width, preset.height)];
+  }
+  try {
+    const storedPapers = JSON.parse(localStorage.getItem(customPaperStorageKey));
+    if (Array.isArray(storedPapers)) {
+      for (const preset of storedPapers) {
+        if (typeof preset?.id === 'string' && /^custom-[0-9a-f-]+$/.test(preset.id) &&
+            typeof preset.name === 'string' && preset.name.trim() &&
+            validPaperSide(preset.width) && validPaperSide(preset.height) &&
+            ['in', 'mm'].includes(preset.unit)) registerCustomPaper(preset);
+      }
+    }
+  } catch {
+    // Presets remain optional when browser storage is unavailable.
+  }
+  const paperLabelDimension = (inches, unit) => Number((inches * (unit === 'mm' ? 25.4 : 1)).toFixed(4));
+  function syncCustomPaperChoices() {
+    const choices = $('customPaperChoices');
+    choices.hidden = !customPapers.size;
+    choices.replaceChildren(...[...customPapers.values()].map(({ id, name, width, height, unit }) =>
+      new Option(`${name} · ${paperLabelDimension(width, unit)} × ${paperLabelDimension(height, unit)} ${unit}`, id)
+    ));
+  }
+  syncCustomPaperChoices();
   footer.setAttribute('font-family', 'Arial, sans-serif');
   footer.setAttribute('font-size', '11');
   footerIdentification.setAttribute('font-size', '9');
@@ -78,6 +108,7 @@ const openDrawingWorkspace = (() => {
     base = null, // the 3D view snapshot the "From 3D view" drawing is framed from
     geometry = null,
     geometryFloor = null,
+    geometryUsesPlotWidths = false,
     rendered = null,
     timer = 0,
     renderRevision = 0,
@@ -177,6 +208,7 @@ const openDrawingWorkspace = (() => {
         ? { axo: viewHeading, plan: viewHeading, elevation: viewHeading } : {}),
       pens: drawingPens(snapshot.settings.pens)
     };
+    if (!Object.hasOwn(paperSizes, settings.paper)) settings.paper = 'letter';
     titleFields.forEach((field, i) => { field.value = snapshot.titles?.[i] ?? ''; });
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
@@ -310,12 +342,18 @@ const openDrawingWorkspace = (() => {
   }
   const compass = $('drawingCompass');
   const orientationStatus = $('orientationStatus');
-  $('penMenu').addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !$('penMenu').open) return;
-    event.stopPropagation();
-    $('penMenu').open = false;
-    $('penMenuToggle').focus();
-  });
+  const clipMenu = $('clipMenu'), penMenu = $('penMenu');
+  for (const [menu, other] of [[clipMenu, penMenu], [penMenu, clipMenu]]) {
+    menu.querySelector('summary').addEventListener('click', () => {
+      if (!menu.open) other.open = false;
+    });
+    menu.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !menu.open) return;
+      event.stopPropagation();
+      menu.open = false;
+      menu.querySelector('summary').focus();
+    });
+  }
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
   for (const button of sheetViewButtons)
     button.onclick = () => selectSheetView(button.dataset.sheetView, true);
@@ -332,11 +370,13 @@ const openDrawingWorkspace = (() => {
     compass.setAttribute('aria-label', plan ? 'Plan orientation compass' : 'View direction compass');
     $('drawingOrbitField').hidden = !elevation;
     const viewPicker = $('drawingView');
+    viewPicker.querySelector('[value="aligned"]').disabled = !currentPlane();
     viewPicker.value = settings.view;
+    clipMenu.classList.toggle('view-aligned', settings.view === 'aligned');
     $('useNavView').disabled = !viewer.ok;
     for (const button of sheetViewButtons) {
       const view = button.dataset.sheetView;
-      button.disabled = (view === 'nav' && !base) || (view === 'aligned' && !currentPlane());
+      button.disabled = view === 'nav' && !base;
       viewPicker.querySelector(`[value="${view}"]`).disabled = button.disabled;
       button.setAttribute('aria-pressed', String(view === settings.view));
     }
@@ -469,18 +509,13 @@ const openDrawingWorkspace = (() => {
   }
 
   function renderPens(target, frame, identified = false) {
-    const { pens, ink, texture, pencil, pencilEcho, construction, section, heaviest, denominator } =
-      frame;
-    const widths = printedDrawingPenWidths(pens, denominator),
-      guideScale = drawingPenScale(pens, denominator);
+    const { pens, ink, texture, section, heaviest, palette: { widths, colors } } = frame;
     const colorLayer = markSvgLayer(svgElement('g', {}), 'Colour wash');
     if (frame.wash)
       colorLayer.append(
         svgElement('image', { width: frame.width, height: frame.height, href: frame.wash })
       );
     const textureLayer = markSvgLayer(svgElement('g', {}), 'Surface texture');
-    const layout = markSvgLayer(svgElement('g', {}), 'Construction lines');
-    const guide = markSvgLayer(svgElement('g', {}), 'Pencil marks');
     function path(d, width, stroke) {
       return svgElement('path', {
         d,
@@ -491,44 +526,21 @@ const openDrawingWorkspace = (() => {
         'stroke-linejoin': 'round'
       });
     }
-    const graphite = sheetInk(pens.paper) === '#ebeee8' ? '#cfc4b9' : '#6d655d';
-    if (construction) {
-      const axes = path(construction, 0.16 * guideScale, graphite);
-      axes.setAttribute('opacity', '0.50');
-      axes.setAttribute('stroke-dasharray', '12 4 2 4');
-      layout.append(axes);
-    }
-    for (const [d, width, opacity] of [
-      [pencilEcho, 0.12, 0.43],
-      [pencil, 0.19, 0.73]
-    ]) {
-      if (!d) continue;
-      const strokes = path(d, width * guideScale, graphite);
-      strokes.setAttribute('opacity', opacity);
-      guide.append(strokes);
-    }
-    const layers = [colorLayer, layout, guide, textureLayer];
-    const firstInk = ink.findIndex((pressure) => pressure.some(Boolean));
-    const order = pens.widths.map((_, i) => i).sort((a, b) => pens.widths[a] - pens.widths[b]);
+    const layers = [colorLayer, textureLayer];
+    const firstInk = ink.findIndex(Boolean);
+    const baseWidths = pens.mode === 'rhino' ? widths : pens.widths;
+    const order = widths.map((_, i) => i).sort((a, b) => baseWidths[a] - baseWidths[b]);
     for (const i of order) {
       const width = widths[i],
-        stroke = pens.colors[i];
+        stroke = colors[i];
       if (texture[i]) textureLayer.append(path(texture[i], width, stroke));
       const layer = markSvgLayer(
         svgElement('g', { 'data-weight-mm': width }),
-        `Pen ${i + 1} · ${width.toFixed(2)} mm`
+        pens.mode === 'rhino' ? `Rhino print width · ${width} mm` : `Pen ${i + 1} · ${width.toFixed(2)} mm`
       );
-      // Pressure varies slightly within a pen layer. Standard linework and section cuts use
-      // the full printed width reported on the sheet, as do most sketch marks.
-      const named = ink[i].findIndex(Boolean);
-      for (const [pressure, multiplier] of [
-        [1, 0.94],
-        [0, 1],
-        [2, 1.06]
-      ]) {
-        if (!ink[i][pressure]) continue;
-        const linework = path(ink[i][pressure], width * multiplier, stroke);
-        if (identified && i === firstInk && pressure === named) linework.id = 'drawingLinework';
+      if (ink[i]) {
+        const linework = path(ink[i], width, stroke);
+        if (identified && i === firstInk) linework.id = 'drawingLinework';
         layer.append(linework);
       }
       layers.push(layer);
@@ -540,13 +552,15 @@ const openDrawingWorkspace = (() => {
         layers.push(cuts);
       }
     }
-    for (const [name, strokes] of [
-      ['Component outlines', frame.componentInk],
-      ['Overall silhouette', frame.silhouetteInk]
+    for (const [key, strokes] of [
+      ['componentOutlines', frame.componentInk],
+      ['silhouette', frame.silhouetteInk],
+      ['groundLine', frame.groundLine]
     ]) {
       if (!strokes) continue;
-      const layer = markSvgLayer(svgElement('g', {}), name);
-      layer.append(path(strokes, widths[heaviest], pens.colors[heaviest]));
+      const { width, color } = pens.detailPens[key];
+      const layer = markSvgLayer(svgElement('g', { 'data-weight-mm': width }), DRAWING_DETAIL_PENS[key].label);
+      layer.append(path(strokes, width, color));
       layers.push(layer);
     }
     target.replaceChildren(...layers);
@@ -589,7 +603,8 @@ const openDrawingWorkspace = (() => {
     return tile;
   }
 
-  function geometryFor(camera, planes, seeThrough, bodies) {
+  function geometryFor(camera, planes, seeThrough, bodies, pens) {
+    const usesPlotWidths = pens.mode === 'rhino';
     let floor = null;
     if (sourceModel.studioFloorCount) {
       if (!seeThrough && planes.length === 0 && sourceModel.studioEnclosed()) floor = -1;
@@ -601,11 +616,13 @@ const openDrawingWorkspace = (() => {
         }
       }
     }
-    if (!geometry || geometryFloor !== floor || drawingBodyMode !== bodies) {
+    if (!geometry || geometryFloor !== floor || drawingBodyMode !== bodies || geometryUsesPlotWidths !== usesPlotWidths) {
       drawingBodyMode = bodies;
       const includeStudioFloor = floor === null ? undefined : (level) => level === floor;
-      geometry = drawingGeometry(sourceModel.assemble(includeStudioFloor), sourceModel);
+      const includeLayer = usesPlotWidths ? (layer) => rhinoPlotWidth(layer) > 0 : undefined;
+      geometry = drawingGeometry(sourceModel.assemble(includeStudioFloor, includeLayer), sourceModel);
       geometryFloor = floor;
+      geometryUsesPlotWidths = usesPlotWidths;
     }
     return geometry;
   }
@@ -634,7 +651,7 @@ const openDrawingWorkspace = (() => {
         width: Math.floor(drawingWidth / columns),
         height: Math.floor(drawingHeight / rows)
       };
-    const denominator = floorSetScale(plans, camera, paper, region, settings.scale, settings.glazing, settings.bodies);
+    const denominator = floorSetScale(plans, camera, paper, region, settings.scale, settings.glazing, settings.bodies, settings.pens);
     let cropped = false,
       populated = false;
     const regionFills = [];
@@ -644,7 +661,7 @@ const openDrawingWorkspace = (() => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (!currentRender(revision)) return null;
       const frame = renderDrawing(
-        geometryFor(camera, planes, settings.glazing, settings.bodies),
+        geometryFor(camera, planes, settings.glazing, settings.bodies, settings.pens),
         camera,
         planes,
         paper,
@@ -678,11 +695,11 @@ const openDrawingWorkspace = (() => {
     };
   }
 
-  function floorSetScale(plans, camera, paper, region, scale, glazing, bodies) {
+  function floorSetScale(plans, camera, paper, region, scale, glazing, bodies, pens) {
     if (scale !== 'auto') return scale;
     // Every lower plan keeps a subset of the model retained by the highest horizontal cut.
     const { planes } = plans.at(-1);
-    const model = geometryFor(camera, planes, glazing, bodies);
+    const model = geometryFor(camera, planes, glazing, bodies, pens);
     const { bounds } = drawingProjection(model, camera, planes);
     return fittedDrawingScale(bounds, drawingViewport(paper, region));
   }
@@ -718,7 +735,7 @@ const openDrawingWorkspace = (() => {
       const next = allPlans()
         ? await renderFloorSheet(paper, camera, revision)
         : renderDrawing(
-            geometryFor(camera, clips, settings.glazing, settings.bodies),
+            geometryFor(camera, clips, settings.glazing, settings.bodies, settings.pens),
             camera,
             clips,
             paper,
@@ -773,6 +790,7 @@ const openDrawingWorkspace = (() => {
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
       syncPenScaleNote(denominator);
+      syncPenDepth();
       setDrawingOutputAvailable(rendered.populated);
       $('printFloorSet').disabled = printingFloorSet;
       resizePaperPreview();
@@ -796,7 +814,7 @@ const openDrawingWorkspace = (() => {
           ? 'Some plans extend past their panels. Use Fit to scale the set.'
           : 'Drawing extends past the sheet. Drag to choose the part to export.'
         : exportButton.disabled
-          ? 'The planes clip all the visible geometry.'
+          ? 'No printable geometry is visible on this sheet.'
           : allPlans()
             ? 'Floor plans share a drawing scale.'
             : base && settings.scale !== 'auto' && !settings.placement.center &&
@@ -851,21 +869,123 @@ const openDrawingWorkspace = (() => {
     const pens = settings.pens;
     const widths = printedDrawingPenWidths(pens, denominator).map((width) => width.toFixed(2));
     $('drawingPenScaleNote').textContent = pens.adaptToScale
-      ? `Your settings apply at 1:${DRAWING_PEN_REFERENCE_SCALE}. At 1:${denominator} the pens print at ${widths.join(' / ')} mm.`
+      ? `Your settings apply at 1:${DRAWING_PEN_REFERENCE_SCALE}. At 1:${denominator} the numbered pens print at ${widths.join(' / ')} mm.`
       : 'Widths stay fixed on paper at every scale.';
+  }
+
+  const detailPenControls = Object.entries(DRAWING_DETAIL_PENS).map(([key, { id, label, help }]) => {
+    const row = document.createElement('div'),
+      toggleLabel = document.createElement('label'),
+      toggle = document.createElement('input'),
+      note = document.createElement('p'),
+      fields = document.createElement('div'),
+      width = document.createElement('input'),
+      color = document.createElement('input');
+    row.className = 'detail-pen';
+    toggleLabel.className = 'check';
+    toggle.id = id;
+    toggle.type = 'checkbox';
+    note.id = `${id}Help`;
+    note.className = 'hint';
+    note.textContent = help;
+    toggle.setAttribute('aria-describedby', note.id);
+    toggleLabel.append(toggle, label);
+    fields.className = 'detail-pen-fields';
+    width.type = 'number';
+    Object.assign(width, DRAWING_PEN_LIMITS);
+    color.type = 'color';
+    for (const [input, caption] of [[width, 'Width (mm)'], [color, 'Colour']]) {
+      const fieldLabel = document.createElement('label');
+      input.setAttribute('aria-label', `${label} ${caption.toLowerCase()}`);
+      fieldLabel.append(caption, input);
+      fields.append(fieldLabel);
+    }
+    toggle.onchange = () => {
+      settings.pens[key] = toggle.checked;
+      fields.hidden = !toggle.checked;
+      queueDrawing();
+    };
+    width.onchange = () => {
+      const pen = settings.pens.detailPens[key];
+      if (Number.isFinite(width.valueAsNumber))
+        pen.width = clamp(width.valueAsNumber, DRAWING_PEN_LIMITS.min, DRAWING_PEN_LIMITS.max);
+      width.value = pen.width;
+      queueDrawing();
+    };
+    color.onchange = () => {
+      settings.pens.detailPens[key].color = color.value;
+      queueDrawing();
+    };
+    row.append(toggleLabel, note, fields);
+    $('drawingDetailPens').append(row);
+    return { key, toggle, width, color, fields };
+  });
+
+  function penLegendRow(label, value) {
+    const row = document.createElement('li');
+    for (const text of [label, value]) {
+      const item = document.createElement('span');
+      item.textContent = text;
+      row.append(item);
+    }
+    return row;
+  }
+
+  function syncPenDepth() {
+    const pens = settings.pens;
+    if (pens.mode !== 'distance') return;
+    const [start, end] = drawingPenDepthRange(pens);
+    const ranked = drawingPensByWeight(pens.widths);
+    const widths = printedDrawingPenWidths(pens, rendered?.denominator ?? DRAWING_PEN_REFERENCE_SCALE);
+    const row = $('drawingDepthBands'), strip = $('drawingDepthStrip');
+    $('drawingDepthAdjust').hidden = ranked.length === 1;
+    $('drawingDistanceFrom').value = start;
+    $('drawingDistanceTo').value = end;
+    $('drawingDistanceFromOut').textContent = `${start}%`;
+    $('drawingDistanceToOut').textContent = `${end}%`;
+    row.replaceChildren();
+    strip.replaceChildren();
+    const percent = (depth) => `${Number(depth.toFixed(1))}%`;
+    const boundary = (i) => start + (end - start) * i / ranked.length;
+    ranked.forEach((index, band) => {
+      const from = band === 0 ? 0 : boundary(band);
+      const to = band === ranked.length - 1 ? 100 : boundary(band + 1);
+      const segment = document.createElement('span');
+      segment.style.flexBasis = `${to - from}%`;
+      segment.style.setProperty('--depth-stroke', `${Math.max(1, 7 * widths[index] / widths[ranked[0]])}px`);
+      strip.append(segment);
+      row.append(penLegendRow(`Pen ${index + 1} · ${widths[index].toFixed(2)} mm`, `${percent(from)}–${percent(to)}`));
+    });
   }
 
   // Rebuild the paired controls only when the pen set or assignment scheme changes.
   function syncPenControls() {
     const pens = settings.pens;
-    $('drawingPenMode').value = pens.mode;
-    $('drawingPenStyle').value = pens.style;
+    const modes = $('drawingPenMode');
+    const rhino = modes.querySelector('[value="rhino"]');
+    rhino.disabled = !sourceModel?.layers.some((layer) => Number.isFinite(layer.plotWeight));
+    if (rhino.disabled && pens.mode === 'rhino') pens.mode = 'distance';
+    modes.value = pens.mode;
+    const useRhino = pens.mode === 'rhino';
+    $('drawingCustomPens').hidden = $('drawingPenScaling').hidden = useRhino;
+    $('drawingRhinoPens').hidden = !useRhino;
+    if (useRhino) {
+      const rows = sourceModel.layers.map((layer) => {
+        const plotWidth = rhinoPlotWidth(layer);
+        return penLegendRow(layer.label, plotWidth < 0 ? 'No print' : `${plotWidth} mm`);
+      });
+      $('drawingRhinoLayerWeights').replaceChildren(...rows);
+    }
     $('drawingPaperColor').value = pens.paper;
     $('drawingInkColor').value = pens.colors[0];
     $('drawingPenCount').value = pens.widths.length;
     $('drawingAdaptWeights').checked = pens.adaptToScale;
-    $('drawingSilhouette').checked = pens.silhouette;
-    $('drawingComponentOutlines').checked = pens.componentOutlines;
+    for (const { key, toggle, width, color, fields } of detailPenControls) {
+      toggle.checked = pens[key];
+      fields.hidden = !toggle.checked;
+      width.value = pens.detailPens[key].width;
+      color.value = pens.detailPens[key].color;
+    }
     $('drawingCurves').checked = pens.curves;
     $('drawingOpenEdges').checked = pens.openEdges;
     $('drawingSilhouettes').checked = pens.silhouettes;
@@ -874,10 +994,7 @@ const openDrawingWorkspace = (() => {
     $('drawingCreaseAngle').disabled = !pens.creases;
     $('drawingCreaseOut').textContent = pens.creaseAngle + '°';
     $('drawingDistanceFields').hidden = pens.mode !== 'distance';
-    $('drawingDistanceFrom').value = pens.distanceFrom;
-    $('drawingDistanceTo').value = pens.distanceTo;
-    $('drawingDistanceFromOut').textContent = pens.distanceFrom + '%';
-    $('drawingDistanceToOut').textContent = pens.distanceTo + '%';
+    syncPenDepth();
     const components = $('drawingPenComponents');
     components.hidden = pens.mode !== 'component';
     components.replaceChildren(
@@ -931,6 +1048,7 @@ const openDrawingWorkspace = (() => {
           slider.value = number.value = next;
           for (const select of components.querySelectorAll('select'))
             select.options[i].textContent = `Pen ${i + 1} · ${next.toFixed(2)} mm`;
+          syncPenDepth();
           queueDrawing();
         };
         slider.oninput = () => {
@@ -956,7 +1074,7 @@ const openDrawingWorkspace = (() => {
       pens[key] = value;
       if (key === 'distanceFrom') pens.distanceTo = Math.max(pens.distanceTo, value + 5);
       else pens.distanceFrom = Math.min(pens.distanceFrom, value - 5);
-      syncPenControls();
+      syncPenDepth();
       queueDrawing();
     };
   $('drawingPenCount').onchange = (event) => {
@@ -966,10 +1084,6 @@ const openDrawingWorkspace = (() => {
       widths: DRAWING_PEN_PRESETS[Number(event.target.value)]
     });
     syncPenControls();
-    queueDrawing();
-  };
-  $('drawingPenStyle').onchange = (event) => {
-    settings.pens.style = event.target.value;
     queueDrawing();
   };
   $('drawingAdaptWeights').onchange = (event) => {
@@ -992,20 +1106,13 @@ const openDrawingWorkspace = (() => {
     syncPenControls();
     queueDrawing();
   };
-  $('drawingSilhouette').onchange = (event) => {
-    settings.pens.silhouette = event.target.checked;
-    queueDrawing();
-  };
-  $('drawingComponentOutlines').onchange = (event) => {
-    settings.pens.componentOutlines = event.target.checked;
-    queueDrawing();
-  };
   $('drawingPaperColor').onchange = (event) => {
     settings.pens.paper = event.target.value;
     queueDrawing();
   };
   $('drawingInkColor').onchange = (event) => {
     settings.pens.colors.fill(event.target.value);
+    for (const pen of Object.values(settings.pens.detailPens)) pen.color = event.target.value;
     syncPenControls();
     queueDrawing();
   };
@@ -1021,10 +1128,11 @@ const openDrawingWorkspace = (() => {
     syncCompass();
     $('drawingRendering').value = settings.mode;
     syncPenControls();
-    $('drawingPaper').value = settings.paper;
+    paperPicker.value = settings.paper;
     $('drawingOrientation').value = settings.orientation;
     $('drawingScale').value = settings.scale;
     $('drawingGlazing').checked = settings.glazing;
+    $('drawingNoPlanes').hidden = Boolean(plane);
     $('drawingPlaneFields').hidden = !plane;
     $('drawingPlanes').replaceChildren(
       ...settings.planes.map((item, index) => {
@@ -1112,9 +1220,65 @@ const openDrawingWorkspace = (() => {
     settings.mode = event.target.value;
     queueDrawing();
   };
-  $('drawingPaper').onchange = (event) => {
-    settings.paper = event.target.value;
+  function selectDrawingPaper(id) {
+    settings.paper = paperPicker.value = id;
+    const preset = customPapers.get(id);
+    if (preset) settings.orientation = $('drawingOrientation').value = preset.width >= preset.height ? 'landscape' : 'portrait';
     queueDrawing();
+  }
+  const paperDialog = $('customPaperDialog');
+  const paperUnit = $('customPaperUnit'), paperName = $('customPaperName'),
+    paperWidth = $('customPaperWidth'), paperHeight = $('customPaperHeight'), paperError = $('customPaperError');
+  let currentPaperUnit = 'mm';
+  paperPicker.onchange = () => {
+    if (paperPicker.value !== 'custom') {
+      selectDrawingPaper(paperPicker.value);
+      return;
+    }
+    paperPicker.value = settings.paper;
+    const preset = customPapers.get(settings.paper);
+    const { width, height } = preset ?? paperDimensions();
+    currentPaperUnit = paperUnit.value = preset?.unit ?? 'mm';
+    paperName.value = preset?.name ?? '';
+    paperWidth.value = paperLabelDimension(width, currentPaperUnit);
+    paperHeight.value = paperLabelDimension(height, currentPaperUnit);
+    paperError.hidden = true;
+    paperDialog.showModal();
+    paperName.select();
+  };
+  $('cancelCustomPaper').onclick = () => paperDialog.close();
+  paperUnit.onchange = () => {
+    for (const input of [paperWidth, paperHeight]) {
+      const inches = input.valueAsNumber / (currentPaperUnit === 'mm' ? 25.4 : 1);
+      if (Number.isFinite(inches)) input.value = paperLabelDimension(inches, paperUnit.value);
+    }
+    currentPaperUnit = paperUnit.value;
+  };
+  $('customPaperForm').onsubmit = (event) => {
+    event.preventDefault();
+    const name = paperName.value.trim(), unit = paperUnit.value;
+    const factor = unit === 'mm' ? 25.4 : 1;
+    const width = paperWidth.valueAsNumber / factor, height = paperHeight.valueAsNumber / factor;
+    if (!name || !validPaperSide(width) || !validPaperSide(height)) {
+      paperError.textContent = 'Enter a name and dimensions within the supported range.';
+      paperError.hidden = false;
+      return;
+    }
+    const previous = [...customPapers.values()].find((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    const id = previous?.id ?? `custom-${Array.from(crypto.getRandomValues(new Uint32Array(4)), (value) => value.toString(16).padStart(8, '0')).join('')}`;
+    const preset = { id, name, width, height, unit };
+    const updated = new Map(customPapers).set(id, preset);
+    try {
+      localStorage.setItem(customPaperStorageKey, JSON.stringify([...updated.values()]));
+    } catch {
+      paperError.textContent = 'This browser could not save the paper size.';
+      paperError.hidden = false;
+      return;
+    }
+    registerCustomPaper(preset);
+    syncCustomPaperChoices();
+    selectDrawingPaper(id);
+    paperDialog.close();
   };
   $('drawingOrientation').onchange = (event) => {
     settings.orientation = event.target.value;
@@ -1237,15 +1401,18 @@ const openDrawingWorkspace = (() => {
     queueDrawing();
   };
   $('alignDrawingPlane').onclick = () => {
-    settings.view = 'aligned';
-    $('drawingView').value = settings.view;
-    syncCompass();
-    queueDrawing();
+    selectSheetView('aligned');
+    clipMenu.open = false;
+    $('clipMenuToggle').focus();
   };
   $('placeDrawingPlane').onclick = () => {
     placing = !placing;
     $('placeDrawingPlane').setAttribute('aria-pressed', String(placing));
     sheet.dataset.placing = String(placing);
+    if (placing) {
+      clipMenu.open = false;
+      sheet.focus({ preventScroll: true });
+    }
     showStatus();
   };
   panel.addEventListener('keydown', (event) => {
@@ -1407,7 +1574,7 @@ const openDrawingWorkspace = (() => {
       .filter((node) => node.localName === 'g')
       .forEach((layer, i) => {
         const order = String(i + 1).padStart(2, '0'),
-          name = layer.dataset.layer.replace(/ · /g, ' ').replace(/\./g, 'p').replace(/ /g, '_');
+          name = layer.dataset.layer.replace(/ · /g, ' ').replace(/\./g, 'p').replace(/[^a-zA-Z0-9_]+/g, '_');
         layer.id = `PN_${order}_${name}`;
         [...layer.querySelectorAll('[data-floor]')].forEach((region) => {
           region.id = `${layer.id}_floor_${region.dataset.floor}`.replace(/^PN_/, 'Floor_');
@@ -1418,7 +1585,8 @@ const openDrawingWorkspace = (() => {
 
   function drawingFilename(extension) {
     const view = allPlans() ? 'floor-plans' : settings.view;
-    return `${fileStem(sheetTitle())}-${view}-${settings.paper}-1-${rendered.denominator}.${extension}`;
+    const paper = customPapers.get(settings.paper);
+    return `${fileStem(sheetTitle())}-${view}-${paper ? fileStem(paper.name) : settings.paper}-1-${rendered.denominator}.${extension}`;
   }
   exportButton.onclick = () => {
     downloadBlob(
@@ -1464,13 +1632,13 @@ const openDrawingWorkspace = (() => {
     printingFloorSet = button.disabled = true;
     button.textContent = 'Preparing floor set…';
     try {
-      const denominator = floorSetScale(plans, camera, paper, null, scale, glazing, bodies);
+      const denominator = floorSetScale(plans, camera, paper, null, scale, glazing, bodies, pens);
       const sheets = [];
       for (const { planes, label } of plans) {
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (sourceModel !== model) return;
         const frame = renderDrawing(
-          geometryFor(camera, planes, glazing, bodies),
+          geometryFor(camera, planes, glazing, bodies, pens),
           camera,
           planes,
           paper,

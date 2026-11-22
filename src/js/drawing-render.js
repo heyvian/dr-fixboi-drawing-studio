@@ -1,32 +1,3 @@
-// Dashed-style construction axes through the model centre. Plan shows both horizontal axes
-// (east-west and north-south); other views show the vertical axis and the ground-plane axis.
-function constructionGuides(model, camera, project, coordinate) {
-  if (!model) return '';
-  const plan = Math.abs(Math.sin(camera.el)) > 0.99,
-    radius = model.reach * 1.08,
-    height = model.height;
-  const axis = (angle) => {
-    const x = radius * Math.cos(angle),
-      z = radius * Math.sin(angle);
-    return [
-      [-x, 0, -z],
-      [x, 0, z]
-    ];
-  };
-  const guides = plan
-    ? [axis(0), axis(Math.PI / 2)]
-    : [
-        axis(Math.abs(camera.el) < 0.01 ? camera.az + Math.PI / 2 : 0),
-        [
-          [0, -1, 0],
-          [0, height + 4, 0]
-        ]
-      ];
-  return guides
-    .map(([a, b]) => 'M' + coordinate(project(a)) + 'L' + coordinate(project(b)))
-    .join('');
-}
-
 function drawingViewport(paper, region) {
   const pixelsPerMillimetre = DRAWING_PIXELS_PER_INCH / 25.4,
     width = region?.width ?? Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
@@ -145,6 +116,7 @@ function renderDrawing(
     if (polygon.length < 3) continue;
     if (!face.glazing || !seeThrough) {
       const color = paint && drawingFaceColor(face, sun, rendering === 'flat');
+      const body = face.body || (pens.silhouette ? 1 : 0);
       rasterDrawingPolygon(
         depth,
         width,
@@ -152,8 +124,8 @@ function renderDrawing(
         polygon,
         paint?.data,
         color,
-        face.body ? outline : null,
-        face.body
+        body ? outline : null,
+        body
       );
     }
     for (const plane of clips) {
@@ -214,8 +186,7 @@ function renderDrawing(
             from = coordinate(first),
             to = coordinate(last),
             key = from < to ? from + '/' + to : to + '/' + from;
-          if (!seen.has(key)) {
-            collect('M' + from + 'L' + to, first, last);
+          if (!seen.has(key) && collect('M' + from + 'L' + to, first, last) !== false) {
             seen.add(key);
           }
         }
@@ -225,21 +196,21 @@ function renderDrawing(
   }
   // Draw section cuts first in the deduplication set so their heavier weight wins.
   for (const [a, b] of cutLines) strokeVisible(a, b, (command) => section.push(command));
-  function strokeModelEdge(a, b, component, detail, texture = false, bodies = null) {
+  function strokeModelEdge(a, b, component, detail, texture = false, bodies = null, outlineOnly = false) {
     const clipped = clipDrawingLine(projected[a], projected[b], clips);
     if (clipped)
       strokeVisible(clipped[0], clipped[1], (command, from, to) => {
         const boundary = bodies?.length
           ? drawingBoundary(outline.owner, width, height, from, to, bodies)
           : '';
+        if (outlineOnly && !(boundary && pens.componentOutlines) && !(boundary === 'silhouette' && pens.silhouette))
+          return false;
         marks.push({
           command,
           depth: (from[2] + to[2]) / 2,
           component,
           detail,
           texture,
-          from,
-          to,
           boundary
         });
       });
@@ -259,25 +230,22 @@ function renderDrawing(
     const crease =
       pens.creases &&
       faces.slice(1).some((other) => Math.abs(dot(first.normal, other.normal)) < creaseLimit);
-    const bodies = outline && faces.map((face) => face.body).filter(Boolean);
+    const bodies = outline && faces.map((face) => face.body || (pens.silhouette ? 1 : 0)).filter(Boolean);
     const joint = pens.componentOutlines && bodies.some((body) => body !== bodies[0]);
-    if (silhouette || crease || joint)
-      strokeModelEdge(start, end, first.component, silhouette ? 0 : 0.52, false, bodies);
+    const drawEdge = silhouette || crease || joint;
+    if (drawEdge || (bodies?.length && (open || turning)))
+      strokeModelEdge(start, end, first.component, silhouette ? 0 : 0.52, false, bodies, !drawEdge);
   }
   if (pens.curves)
     for (const { a, b, component, texture } of geometry.lines)
       strokeModelEdge(a, b, component, 1, texture);
-  const ranked = pens.widths
-      .map((width, index) => ({ width, index }))
-      .sort((a, b) => b.width - a.width),
+  const palette = drawingPenPalette(pens, geometry.model, denominator),
+    { ranked, layerIndices } = palette,
     count = ranked.length,
-    ink = Array.from({ length: count }, () => [[], [], []]),
+    ink = Array.from({ length: count }, () => []),
     texture = Array.from({ length: count }, () => []),
-    pencil = [],
-    pencilEcho = [],
     silhouetteInk = [],
-    componentInk = [],
-    sketch = pens.style === 'sketch';
+    componentInk = [];
   let far = Infinity,
     near = -Infinity;
   for (const mark of marks) {
@@ -285,62 +253,37 @@ function renderDrawing(
     near = Math.max(near, mark.depth);
   }
   // Base the intervals on visible strokes so a clip or a cropped sheet still uses the pen range.
-  const bandStart = Math.min(pens.distanceFrom, pens.distanceTo - 5) / 100,
-    bandEnd = Math.max(pens.distanceTo, pens.distanceFrom + 5) / 100;
+  const [bandStart, bandEnd] = drawingPenDepthRange(pens).map((percent) => percent / 100);
   for (const mark of marks) {
     const position = near > far ? (near - mark.depth) / (near - far) : 0,
       // Strokes nearer than the band start use the heaviest pen and those beyond its end the lightest.
       banded = clamp((position - bandStart) / (bandEnd - bandStart), 0, 1);
-    const index =
-      pens.mode === 'component'
+    const index = layerIndices ? (layerIndices.get(mark.component) ?? 0)
+      : pens.mode === 'component'
         ? pens.components[mark.component]
         : ranked[
             pens.mode === 'distance'
               ? Math.min(count - 1, Math.floor(banded * count))
               : Math.round((count - 1) * mark.detail)
-          ].index;
+          ];
     if (mark.texture) {
       texture[index].push(mark.command);
       continue;
     }
-    const { from, to } = mark,
-      noise = sketch ? Math.sin(from[0] * 12.9898 + from[1] * 78.233) * 43758.5453 : 0,
-      variation = noise - Math.floor(noise),
-      pressure = sketch && mark.detail < 1 ? (variation < 0.22 ? 1 : variation > 0.78 ? 2 : 0) : 0;
     // Promote each stroke once. When both options apply, the overall silhouette owns the stroke.
     if (pens.silhouette && mark.boundary === 'silhouette') silhouetteInk.push(mark.command);
     else if (pens.componentOutlines && mark.boundary) componentInk.push(mark.command);
-    else ink[index][pressure].push(mark.command);
-    if (!sketch || mark.detail >= 1 || (mark.detail > 0 && variation > 0.38)) continue;
-
-    const dx = to[0] - from[0],
-      dy = to[1] - from[1],
-      length = Math.hypot(dx, dy);
-    if (length < 5) continue;
-    // Follow a visible edge with a bowed graphite stroke. An occasional shorter pass gives
-    // longer edges the retraced look of a pencil layout. The offsets are stable on re-export.
-    const tx = dx / length,
-      ty = dy / length,
-      bow = (variation < 0.5 ? -1 : 1) * (1.5 + variation * 2.1),
-      lead = 1.5 + variation * 2.1,
-      a = [from[0] - tx * lead - ty * bow * 0.4, from[1] - ty * lead + tx * bow * 0.4],
-      b = [to[0] + tx * lead - ty * bow * 0.3, to[1] + ty * lead + tx * bow * 0.3],
-      middle = [(from[0] + to[0]) / 2 - ty * bow, (from[1] + to[1]) / 2 + tx * bow];
-    pencil.push('M' + coordinate(a) + 'Q' + coordinate(middle) + ' ' + coordinate(b));
-    if (length > 13 && variation > 0.72) {
-      const start = [from[0] - tx * 2 + ty * bow * 0.6, from[1] - ty * 2 - tx * bow * 0.6],
-        end = [from[0] + dx * 0.68 + ty * bow * 0.7, from[1] + dy * 0.68 - tx * bow * 0.7];
-      pencilEcho.push('M' + coordinate(start) + 'L' + coordinate(end));
-    }
+    else ink[index].push(mark.command);
   }
-  const construction = sketch
-    ? constructionGuides(
-        geometry.model,
-        camera,
-        (point) => [originX + dot(point, right) * scale, originY - dot(point, up) * scale],
-        coordinate
-      )
-    : '';
+  let groundLine = '';
+  if (pens.groundLine && hasBounds && Math.abs(Math.sin(camera.el)) < 0.01) {
+    const gap = 5 * pixelsPerMillimetre;
+    const inset = pens.detailPens.groundLine.width * pixelsPerMillimetre / 2 + 0.1;
+    const left = Math.max(margin + inset, originX + bounds.left * scale - gap);
+    const right = Math.min(width - margin - inset, originX + bounds.right * scale + gap);
+    if (left < right && originY >= margin + inset && originY <= margin + drawingHeight - inset)
+      groundLine = 'M' + coordinate([left, originY]) + 'L' + coordinate([right, originY]);
+  }
   let wash = '';
   if (paint) {
     const image = document.createElement('canvas');
@@ -351,17 +294,16 @@ function renderDrawing(
     wash = image.toDataURL('image/png');
   }
   return {
-    ink: ink.map((pressure) => pressure.map((paths) => paths.join(''))),
+    ink: ink.map((paths) => paths.join('')),
     silhouetteInk: silhouetteInk.join(''),
     componentInk: componentInk.join(''),
+    groundLine,
     texture: texture.map((paths) => paths.join('')),
-    pencil: pencil.join(''),
-    pencilEcho: pencilEcho.join(''),
-    construction,
     section: section.join(''),
     pens,
-    heaviest: ranked[0].index,
-    populated: marks.length > 0 || section.length > 0,
+    palette,
+    heaviest: ranked[0],
+    populated: marks.length > 0 || section.length > 0 || Boolean(groundLine),
     basis,
     scale,
     originX,

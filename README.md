@@ -1,8 +1,6 @@
 # Dr. FixBoi®’s Drawing Studio
 
-Standalone drawing tool extracted from the [Poly Nation Cross Pollination Laboratory](https://github.com/heyvian/poly-nation). It takes a 3D model and produces architectural linework drawings: axonometrics, plans, floor plans, elevations and sections, with line weights, clipping planes, SVG export and print/PDF.
-
-Instead of the lab's generated geometry, it imports supported Rhino `.3dm` geometry and OBJ files. The built-in sample is The Optics Building.
+Drawing Studio turns Rhino `.3dm` and OBJ models into architectural linework for plans, sections, elevations and axonometrics. Set printed line weights, clip the model, and export editable SVG or vector PDF sheets.
 
 The Optics Building uses the supplied `val.obj` shell as a starting point, with 28 illustrative levels and populated design studios. Furniture, students, desktop clutter and recycling can be shown or hidden independently when drawing plans and sections.
 
@@ -13,12 +11,16 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 1. Choose **Open model…** or **Load sample** in the **File** menu. You can also drag a `.3dm` or `.obj` file onto the page.
 2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo, Elevation and Plan buttons with their direction compass for standard views. Double-click a point (or use **Set orbit centre** and click) to make it the orbit centre, marked by a red crosshair: orbiting turns around it and the standard-view buttons centre on it, keeping your zoom. **Zoom extents** resets the centre to the middle of the model. The 3D view is orthographic, so it matches the drawing projection.
 3. Choose **Draw this view** (or the **Drawing Sheet** tab) to capture the 3D view. Use the buttons above the sheet to switch between Captured view, Axonometric, Plan, and Elevation. Drag the sheet or use the arrow keys to pan it independently of the 3D camera. Use the compass to set the drawing’s direction. A selected clipping plane also provides its own projection.
-4. **Recapture 3D view** in the View box takes a fresh reference from the 3D camera and resets sheet panning. Set rendering and clipping planes in the drawing controls, and open **Line weights** in the sheet toolbar. **Fit** centres the geometry that remains after clipping and picks a scale for the current paper.
+4. **Recapture 3D view** in the View box takes a fresh reference from the 3D camera and resets sheet panning. Use the **Clipping planes** menu to add or adjust a cut, then choose **Align view to plane** to draw straight onto it. Open **Line weights** in the sheet toolbar. **Fit** centres the geometry that remains after clipping and picks a scale for the current paper.
 5. Choose Letter, Tabloid, A4, A3 or A2, and fill in the sheet title, number and revision.
 6. Save a named view to recall its framing, visible layers, clipping planes, pens and sheet setup.
 7. Use **Export SVG** for Illustrator, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to open the browser’s print dialog. In Plan, **Print floor set** in the View box prints one sheet per floor at a shared scale.
 
 Changing the drawing scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
+
+Use **Paper size → Custom size…** to save a named sheet in millimetres or inches. Custom sizes are available across models in the same browser and can be recalled with a saved view.
+
+In **Line weights**, camera-distance assignment shows which depths each pen covers. Printed widths stay fixed by default. For `.3dm` files, **Rhino Print Width by layer** reads the Print Width column from the Layers panel, uses 0.25 mm for layers set to Default, and omits layers set to No print from the sheet. The overall silhouette, key outlines and ground line have their own printed widths and colours. Ground lines appear in elevations and vertical sections.
 
 ### Illustrator
 

@@ -88,7 +88,7 @@ class ModelBuilder {
   }
 
   // Find or create a layer by path. 'visible' is only used when the layer is first created.
-  layer(key, color = [0.55, 0.6, 0.57], visible = true) {
+  layer(key, color = [0.55, 0.6, 0.57], visible = true, plotWeight) {
     if (!this.layerIndex.has(key)) {
       this.layerIndex.set(key, this.layers.length);
       this.layers.push({
@@ -96,6 +96,7 @@ class ModelBuilder {
         label: key.replace(/::/g, ' \u203a '),
         color,
         visible,
+        plotWeight,
         glass: GLASS_LAYER.test(key),
         triangles: 0,
         segments: 0
@@ -175,11 +176,11 @@ class ModelBuilder {
       // Each vertex is 10 floats: position (3), normal (3) and colour (4). Triangles go to 'solid'
       // (or 'glass' for glazing layers) and segments to 'lines'. 'groups' records where each Rhino
       // object starts in every buffer.
-      assemble(includeStudioFloor) {
+      assemble(includeStudioFloor, includeLayer) {
         const mesh = { solid: [], glass: [], lines: [], groups: [] };
         for (const object of builder.objects) {
           const layer = builder.layers[object.layer];
-          if (!layer.visible) continue;
+          if (!layer.visible || (includeLayer && !includeLayer(layer))) continue;
           const studio = object.studioFloor !== undefined;
           if (studio && includeStudioFloor && !includeStudioFloor(object.studioFloor)) continue;
           const colour = [...(object.color || layer.color), 1];
@@ -265,7 +266,8 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
         id: layer.id,
         parent: layer.parentLayerId,
         color: to255(layer.color),
-        visible: layer.visible
+        visible: layer.visible,
+        plotWeight: Number.isFinite(layer.plotWeight) ? layer.plotWeight : 0
       });
       dispose(layer);
     }
@@ -316,7 +318,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
         expandBlock(geometry, matrix, depth, color);
         return;
       }
-      const layerIdx = builder.layer(key, layer?.color, true);
+      const layerIdx = builder.layer(key, layer?.color, true, layer?.plotWeight ?? 0);
       const record = builder.object(layerIdx, attributes.name || key, color);
       addGeometry(record, geometry, matrix);
     }

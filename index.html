@@ -49,6 +49,7 @@
               </select>
             </label>
             <button type="button" id="openCredits">Credits</button>
+            <p class="file-menu-coffee">Found this useful? Buy me a coffee.</p>
           </div>
         </details>
         <span id="fileName" class="file-name" hidden></span>
@@ -136,7 +137,7 @@
             <label class="drawing-view-field">Sheet no. <input id="drawingNumber" type="text" maxlength="24" autocomplete="off" placeholder="A-101" /></label>
             <label class="drawing-view-field">Revision <input id="drawingRevision" type="text" maxlength="16" autocomplete="off" /></label>
           </div>
-          <fieldset class="view-box">
+          <fieldset class="view-box drawing-view-box">
             <legend>View</legend>
             <label class="drawing-view-field"
               >Projection
@@ -148,23 +149,16 @@
                 <option value="aligned" disabled>Aligned to clipping plane</option>
               </select>
             </label>
-            <button
-              type="button"
-              id="useNavView"
-              title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
-            >
-              Recapture 3D view
-            </button>
             <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
-            <div id="drawingOrientationHelp" class="orientation-help" hidden>
-              <p class="hint">Each projection remembers its own direction.</p>
-              <button id="syncViewOrientations" type="button">Sync orientation views</button>
-              <p id="orientationStatus" class="hint" role="status" hidden></p>
-            </div>
             <label id="drawingOrbitField" class="drawing-orbit" hidden
               >Horizontal orbit <output id="drawingOrbitAngle"></output>
               <input id="drawingOrbit" type="range" min="0" max="359" step="1" />
             </label>
+            <div id="drawingOrientationHelp" class="orientation-help" hidden>
+              <button id="syncViewOrientations" type="button" aria-describedby="drawingSyncHelp">Sync views</button>
+              <p id="drawingSyncHelp" class="hint">Sync the current orientation to other views and projections</p>
+              <p id="orientationStatus" class="hint" role="status" hidden></p>
+            </div>
             <label id="drawingPlanSheetField" class="drawing-view-field" hidden
               >Plans on sheet
               <select id="drawingPlanSheet">
@@ -173,6 +167,13 @@
               </select>
             </label>
             <button type="button" id="printFloorSet" title="Print each floor on its own sheet" hidden>Print floor set</button>
+            <button
+              type="button"
+              id="useNavView"
+              title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
+            >
+              Recapture 3D view
+            </button>
           </fieldset>
           <label class="drawing-view-field"
             >Rendering
@@ -221,48 +222,6 @@
 
 
           <label class="check"><input type="checkbox" id="drawingGlazing" /> See through glazing</label>
-          <h3>Clipping planes</h3>
-          <button type="button" id="addDrawingPlane">Add plane</button>
-          <div id="drawingPlanes" class="drawing-plane-list"></div>
-          <div id="drawingPlaneFields" class="drawing-plane-fields" hidden>
-            <label class="drawing-view-field"
-              >Orientation
-              <select id="drawingPlaneAxis">
-                <option value="horizontal">Horizontal</option>
-                <option value="vertical">Vertical</option>
-              </select>
-            </label>
-            <label id="drawingAngleField" class="drawing-offset" hidden
-              >Angle (°)
-              <input type="number" id="drawingPlaneAngle" min="0" max="360" step="1" />
-            </label>
-            <label class="drawing-view-field" id="drawingFloorField" hidden
-              >Horizontal datum
-              <select id="drawingFloor">
-                <option value="">Project datum</option>
-              </select>
-            </label>
-            <label class="drawing-offset"
-              >Offset (m)
-              <input type="number" id="drawingPlaneOffset" step="0.1" />
-            </label>
-            <output
-              id="drawingCutElevation"
-              for="drawingFloor drawingPlaneOffset drawingPlaneMove"
-              class="hint"
-              hidden
-            ></output>
-            <div class="drawing-plane-offset-tools">
-              <input type="range" id="drawingPlaneMove" step="0.1" aria-label="Move clipping plane" />
-              <datalist id="drawingCenterTick"><option value="0" label="Center"></option></datalist>
-              <button type="button" id="centerDrawingPlane" hidden>Center</button>
-            </div>
-            <label class="check"><input type="checkbox" id="flipDrawingPlane" /> Flip kept side</label>
-            <div class="drawing-plane-actions">
-              <button type="button" id="placeDrawingPlane" aria-pressed="false">Place on drawing</button>
-              <button type="button" id="alignDrawingPlane">Align view</button>
-            </div>
-          </div>
           <details class="calc-details drawing-export-help">
             <summary>SVG and Illustrator</summary>
             <label class="check"><input id="exportPaper" type="checkbox" checked /> Include paper background</label>
@@ -321,7 +280,53 @@
             <button type="button" data-sheet-view="axo" aria-pressed="false">Axonometric</button>
             <button type="button" data-sheet-view="plan" aria-pressed="false">Plan</button>
             <button type="button" data-sheet-view="elevation" aria-pressed="false">Elevation</button>
-            <button type="button" data-sheet-view="aligned" aria-pressed="false" disabled>Clipping plane</button>
+            <details class="sheet-tool-menu" id="clipMenu">
+              <summary id="clipMenuToggle">Clipping planes</summary>
+              <div class="sheet-tool-panel clip-panel">
+                <p class="hint" id="drawingNoPlanes">Add a plane to cut the model and make a plan or section.</p>
+                <button type="button" id="addDrawingPlane">Add plane</button>
+                <div id="drawingPlanes" class="drawing-plane-list"></div>
+                <div id="drawingPlaneFields" class="drawing-plane-fields" hidden>
+                  <label class="drawing-view-field"
+                    >Orientation
+                    <select id="drawingPlaneAxis">
+                      <option value="horizontal">Horizontal</option>
+                      <option value="vertical">Vertical</option>
+                    </select>
+                  </label>
+                  <label id="drawingAngleField" class="drawing-offset" hidden
+                    >Angle (°)
+                    <input type="number" id="drawingPlaneAngle" min="0" max="360" step="1" />
+                  </label>
+                  <label class="drawing-view-field" id="drawingFloorField" hidden
+                    >Horizontal datum
+                    <select id="drawingFloor">
+                      <option value="">Project datum</option>
+                    </select>
+                  </label>
+                  <label class="drawing-offset"
+                    >Offset (m)
+                    <input type="number" id="drawingPlaneOffset" step="0.1" />
+                  </label>
+                  <output
+                    id="drawingCutElevation"
+                    for="drawingFloor drawingPlaneOffset drawingPlaneMove"
+                    class="hint"
+                    hidden
+                  ></output>
+                  <div class="drawing-plane-offset-tools">
+                    <input type="range" id="drawingPlaneMove" step="0.1" aria-label="Move clipping plane" />
+                    <datalist id="drawingCenterTick"><option value="0" label="Center"></option></datalist>
+                    <button type="button" id="centerDrawingPlane" hidden>Center</button>
+                  </div>
+                  <label class="check"><input type="checkbox" id="flipDrawingPlane" /> Flip kept side</label>
+                  <div class="drawing-plane-actions">
+                    <button type="button" id="placeDrawingPlane" aria-pressed="false">Place on drawing</button>
+                    <button type="button" id="alignDrawingPlane">Align view to plane</button>
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
           <div class="drawing-toolbar sheet-toolbar">
             <div class="toolbar-group" role="group" aria-label="Paper and scale">
@@ -333,6 +338,8 @@
                   <option value="a4">A4 · 210 × 297 mm</option>
                   <option value="a3">A3 · 297 × 420 mm</option>
                   <option value="a2">A2 · 420 × 594 mm</option>
+                  <optgroup id="customPaperChoices" label="Saved custom sizes" hidden></optgroup>
+                  <option value="custom">Custom size…</option>
                 </select>
               </label>
               <label
@@ -362,85 +369,78 @@
                 Ground
               </button>
             </div>
-            <details class="drawing-pen-settings" id="penMenu">
+            <details class="drawing-pen-settings sheet-tool-menu" id="penMenu">
               <summary id="penMenuToggle">Line weights</summary>
-              <div class="pen-panel">
-                <label class="drawing-view-field"
-                  >Drawing style
-                  <select id="drawingPenStyle">
-                    <option value="standard">Standard line drawing</option>
-                    <option value="sketch">Pen over pencil</option>
-                  </select>
-                </label>
-                <div class="drawing-colours">
-                  <label class="drawing-view-field">Paper colour <input id="drawingPaperColor" type="color" /></label>
-                  <label class="drawing-view-field"
-                    >Set all pen colours <input id="drawingInkColor" type="color"
-                  /></label>
-                </div>
-                <label class="drawing-view-field"
-                  >Number of weights
-                  <select id="drawingPenCount">
-                    <option>1</option>
-                    <option>2</option>
-                    <option>3</option>
-                    <option>4</option>
-                    <option>5</option>
-                  </select>
-                </label>
-                <label class="check"
-                  ><input id="drawingAdaptWeights" type="checkbox" aria-describedby="drawingPenScaleNote" />
-                  Adapt weights to scale</label
-                >
-                <p class="hint" id="drawingPenScaleNote">Widths stay fixed on paper at every scale.</p>
-                <div id="drawingPenWidths"></div>
-                <p class="hint">Weights are in printed millimetres. Section cuts use the heaviest weight.</p>
+              <div class="pen-panel sheet-tool-panel">
                 <label class="drawing-view-field"
                   >Weight assignment
                   <select id="drawingPenMode">
                     <option value="distance">Camera distance</option>
                     <option value="component">Layers</option>
                     <option value="profile">Outlines and detail</option>
+                    <option value="rhino" disabled>Rhino Print Width by layer</option>
                   </select>
                 </label>
-                <div id="drawingDistanceFields" class="drawing-distance">
+                <div id="drawingCustomPens">
                   <label class="drawing-view-field"
-                    >Heaviest pen until <output id="drawingDistanceFromOut">0%</output>
-                    <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" />
+                    >Number of pens
+                    <select id="drawingPenCount">
+                      <option>1</option>
+                      <option>2</option>
+                      <option>3</option>
+                      <option>4</option>
+                      <option>5</option>
+                    </select>
                   </label>
-                  <label class="drawing-view-field"
-                    >Lightest pen from <output id="drawingDistanceToOut">100%</output>
-                    <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" />
-                  </label>
-                  <p class="hint">
-                    Percent of the depth from the nearest to the farthest visible line. Lines nearer than the
-                    first threshold use the heaviest pen, lines beyond the second the lightest, and the pens
-                    share the span between.
-                  </p>
+                  <fieldset id="drawingDistanceFields" class="drawing-distance">
+                    <legend>Pen bands by visible depth</legend>
+                    <div class="depth-endpoints" aria-hidden="true"><span>Nearest</span><span>Farthest</span></div>
+                    <div id="drawingDepthStrip" class="depth-strip" aria-hidden="true"></div>
+                    <ul id="drawingDepthBands" class="depth-bands" aria-label="Pen widths and depth ranges"></ul>
+                    <div id="drawingDepthAdjust" class="depth-adjust">
+                      <div class="depth-endpoints">
+                        <label for="drawingDistanceFrom">Even spacing starts at</label>
+                        <output id="drawingDistanceFromOut" for="drawingDistanceFrom">0%</output>
+                      </div>
+                      <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" aria-describedby="drawingDepthHelp" />
+                      <div class="depth-endpoints">
+                        <label for="drawingDistanceTo">Even spacing ends at</label>
+                        <output id="drawingDistanceToOut" for="drawingDistanceTo">100%</output>
+                      </div>
+                      <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" aria-describedby="drawingDepthHelp" />
+                      <p class="hint" id="drawingDepthHelp">Pens split this span evenly. Move the start right to give the thickest pen more depth, or the end left to give the thinnest pen more depth.</p>
+                    </div>
+                  </fieldset>
+                  <div id="drawingPenWidths"></div>
+                </div>
+                <div id="drawingRhinoPens" hidden>
+                  <p class="hint">Layers set to Default use 0.25 mm. Layers set to No print are left out of the sheet.</p>
+                  <ul id="drawingRhinoLayerWeights" class="depth-bands" aria-label="Rhino layer print widths"></ul>
+                </div>
+                <div class="drawing-colours">
+                  <label class="drawing-view-field">Paper colour <input id="drawingPaperColor" type="color" /></label>
+                  <label class="drawing-view-field">Set all pen colours <input id="drawingInkColor" type="color" /></label>
                 </div>
                 <div id="drawingPenComponents" hidden></div>
                 <div class="nav-lines" role="group" aria-labelledby="drawingEdgesTitle">
                   <strong id="drawingEdgesTitle">Drawn edges</strong>
                   <label><input type="checkbox" id="drawingCurves" /> Curves and wire edges</label>
                   <label><input type="checkbox" id="drawingOpenEdges" /> Open edges (surface boundaries)</label>
-                  <label><input type="checkbox" id="drawingSilhouettes" /> Silhouettes</label>
+                  <label><input type="checkbox" id="drawingSilhouettes" /> Surface contour edges</label>
                   <label><input type="checkbox" id="drawingCreases" /> Creases</label>
                   <label class="nav-angle">Crease angle
                     <input type="range" id="drawingCreaseAngle" min="5" max="90" step="1" value="10" />
                     <output id="drawingCreaseOut">10°</output>
                   </label>
                 </div>
-                <label class="check"
-                  ><input id="drawingSilhouette" type="checkbox" aria-describedby="drawingOutlineNote" />
-                  Overall silhouette</label
-                >
-                <label class="check"
-                  ><input id="drawingComponentOutlines" type="checkbox" aria-describedby="drawingOutlineNote" />
-                  Key outlines</label
-                >
-                <p class="hint" id="drawingOutlineNote">
-                  Use the heaviest pen on the model perimeter, or on each outline body chosen under Layers.
-                </p>
+                <fieldset class="drawing-detail-pens">
+                  <legend>Silhouette, outlines and ground</legend>
+                  <div id="drawingDetailPens"></div>
+                </fieldset>
+                <div id="drawingPenScaling" class="drawing-pen-scaling">
+                  <label class="check"><input id="drawingAdaptWeights" type="checkbox" aria-describedby="drawingPenScaleNote" /> Adapt weights to scale</label>
+                  <p class="hint" id="drawingPenScaleNote">Widths stay fixed on paper at every scale.</p>
+                </div>
               </div>
             </details>
             <div class="toolbar-group export-tools" role="group" aria-label="Export and print">
@@ -470,6 +470,20 @@
       </section>
     </main>
     <div id="floorPrintPages" aria-hidden="true"></div>
+    <dialog id="customPaperDialog" aria-labelledby="customPaperTitle">
+      <form id="customPaperForm">
+        <h2 id="customPaperTitle">Save a paper size</h2>
+        <label>Size name <input id="customPaperName" type="text" maxlength="40" required /></label>
+        <div class="custom-paper-dimensions">
+          <label>Width <input id="customPaperWidth" type="number" step="any" required /></label>
+          <label>Height <input id="customPaperHeight" type="number" step="any" required /></label>
+          <label>Units <select id="customPaperUnit"><option value="mm">Millimetres</option><option value="in">Inches</option></select></label>
+        </div>
+        <p class="hint">Each side can be 4–48 inches or 101.6–1219.2 mm. Saving with the same name updates that size.</p>
+        <p id="customPaperError" role="alert" hidden></p>
+        <div class="custom-paper-actions"><button type="button" id="cancelCustomPaper">Cancel</button><button type="submit" class="primary">Save and use</button></div>
+      </form>
+    </dialog>
     <dialog id="studioCredits" aria-labelledby="creditsTitle">
       <form method="dialog"><button aria-label="Close credits">Close</button></form>
       <h2 id="creditsTitle">Open-source credits</h2>
