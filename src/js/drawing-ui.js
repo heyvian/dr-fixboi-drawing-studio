@@ -310,6 +310,12 @@ const openDrawingWorkspace = (() => {
   }
   const compass = $('drawingCompass');
   const orientationStatus = $('orientationStatus');
+  $('penMenu').addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !$('penMenu').open) return;
+    event.stopPropagation();
+    $('penMenu').open = false;
+    $('penMenuToggle').focus();
+  });
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
   for (const button of sheetViewButtons)
     button.onclick = () => selectSheetView(button.dataset.sheetView, true);
@@ -628,7 +634,7 @@ const openDrawingWorkspace = (() => {
         width: Math.floor(drawingWidth / columns),
         height: Math.floor(drawingHeight / rows)
       };
-    let denominator = settings.scale;
+    const denominator = floorSetScale(plans, camera, paper, region, settings.scale, settings.glazing, settings.bodies);
     let cropped = false,
       populated = false;
     const regionFills = [];
@@ -644,12 +650,11 @@ const openDrawingWorkspace = (() => {
         paper,
         denominator,
         settings.glazing,
-        { x: 0, y: 0, ground: false },
+        { x: 0, y: 0, ground: false, center: true },
         settings.mode,
         settings.pens,
         region
       );
-      denominator = String(frame.denominator);
       cropped ||= frame.cropped;
       populated ||= frame.populated;
       regionFills.push(frame.exportFills);
@@ -671,6 +676,15 @@ const openDrawingWorkspace = (() => {
       populated,
       regionFills
     };
+  }
+
+  function floorSetScale(plans, camera, paper, region, scale, glazing, bodies) {
+    if (scale !== 'auto') return scale;
+    // Every lower plan keeps a subset of the model retained by the highest horizontal cut.
+    const { planes } = plans.at(-1);
+    const model = geometryFor(camera, planes, glazing, bodies);
+    const { bounds } = drawingProjection(model, camera, planes);
+    return fittedDrawingScale(bounds, drawingViewport(paper, region));
   }
 
   const currentRender = (revision) =>
@@ -785,7 +799,8 @@ const openDrawingWorkspace = (() => {
           ? 'The planes clip all the visible geometry.'
           : allPlans()
             ? 'Floor plans share a drawing scale.'
-            : base && (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
+            : base && settings.scale !== 'auto' && !settings.placement.center &&
+                (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
               ? 'Using the captured 3D framing. Drag the drawing or use the arrow keys to pan the sheet.'
               : 'Drag the drawing or use the arrow keys to reposition it.';
   }
@@ -1106,9 +1121,14 @@ const openDrawingWorkspace = (() => {
     queueDrawing();
   };
   $('drawingScale').onchange = (event) => {
-    keepCenterAtScale(event.target.value);
-    settings.scale = event.target.value;
-    queueDrawing();
+    const choice = event.target.value;
+    if (choice === 'auto') fitDrawing();
+    else {
+      keepCenterAtScale(choice);
+      if (settings.scale === 'auto') settings.placement.center = true;
+      settings.scale = choice;
+      queueDrawing();
+    }
   };
   // The drawing is placed relative to the model's centre, so a new scale would swing it back to the
   // middle. Adjust the placement so whatever sits at the sheet centre stays there.
@@ -1120,19 +1140,20 @@ const openDrawingWorkspace = (() => {
       atY = (margin + drawingHeight / 2 - originY) / scale,
       millimetresPerUnit = 1000 / denominator;
     settings.placement.x = (midX - atX) * millimetresPerUnit;
-    if (!settings.placement.ground || settings.view === 'nav')
+    if (!settings.placement.ground)
       settings.placement.y = (midY - atY) * millimetresPerUnit;
   }
   $('drawingGlazing').onchange = (event) => {
     settings.glazing = event.target.checked;
     queueDrawing();
   };
-  $('fitDrawing').onclick = () => {
+  function fitDrawing() {
     settings.scale = 'auto';
     $('drawingScale').value = settings.scale;
-    settings.placement = { x: 0, y: 0, ground: false, center: false };
+    settings.placement = { x: 0, y: 0, ground: false, center: true };
     queueDrawing();
-  };
+  }
+  $('fitDrawing').onclick = fitDrawing;
   $('centerDrawing').onclick = () => {
     settings.placement = { x: 0, y: 0, ground: false, center: true };
     queueDrawing();
@@ -1401,7 +1422,7 @@ const openDrawingWorkspace = (() => {
   }
   exportButton.onclick = () => {
     downloadBlob(
-      new XMLSerializer().serializeToString(vectorDrawingSheet()),
+      new XMLSerializer().serializeToString(convertDrawingSvgToPoints(vectorDrawingSheet())),
       'image/svg+xml',
       drawingFilename('svg')
     );
@@ -1443,6 +1464,7 @@ const openDrawingWorkspace = (() => {
     printingFloorSet = button.disabled = true;
     button.textContent = 'Preparing floor set…';
     try {
+      const denominator = floorSetScale(plans, camera, paper, null, scale, glazing, bodies);
       const sheets = [];
       for (const { planes, label } of plans) {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1452,9 +1474,9 @@ const openDrawingWorkspace = (() => {
           camera,
           planes,
           paper,
-          scale,
+          denominator,
           glazing,
-          { x: 0, y: 0, ground: false },
+          { x: 0, y: 0, ground: false, center: true },
           mode,
           pens
         );
@@ -1550,8 +1572,8 @@ const openDrawingWorkspace = (() => {
     queueDrawing();
   }
 
-  // Remember a 3D view as the drawing's base. 'select' also switches the drawing to it and clears any
-  // sheet nudging, so the drawing starts exactly where the 3D view was left.
+  // Remember the 3D view as the drawing's base. Selecting it also restores the captured direction
+  // and clears sheet panning. Manual scales then use the captured target as their centre.
   function setBase(snapshot, select) {
     if (select || !base) base = snapshot;
     if (select) {

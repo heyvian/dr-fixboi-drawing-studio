@@ -120,6 +120,18 @@ const { makeFixture } = require('./fixture');
   await page.click('#centerDrawing');
   await page.waitForFunction((before) => document.querySelector('#drawingSheet').innerHTML !== before, grounded);
   assert.strictEqual(await page.inputValue('#drawingScale'), currentScale);
+  await page.click('#fitDrawing');
+  await page.locator('#exportDrawing:enabled').waitFor();
+  assert.strictEqual(await page.inputValue('#drawingScale'), 'auto');
+  const framing = await page.evaluate(() => {
+    const drawing = document.querySelector('#drawingSheet [data-layer="Artwork"]').getBBox();
+    const region = document.querySelector('#drawingSheetClip rect').getBBox();
+    return {
+      relativeHeight: drawing.height / region.height,
+      centred: Math.abs(drawing.x + drawing.width / 2 - (region.x + region.width / 2)) < 2
+    };
+  });
+  assert(framing.relativeHeight > 0.8 && framing.relativeHeight < 1 && framing.centred);
   const capturedCamera = await page.evaluate(() => viewer.snapshot());
   await page.locator('[data-sheet-view="plan"]').click();
   await page.locator('#exportDrawing:enabled').waitFor();
@@ -177,6 +189,7 @@ const { makeFixture } = require('./fixture');
   await page.selectOption('#drawingScale', 'auto');
   await page.click('#addDrawingPlane');
   await page.locator('.drawing-pen-settings summary').click();
+  assert(await page.locator('.sheet-toolbar #drawingDistanceFrom').isVisible());
   await page.locator('#drawingDistanceFrom').press('ArrowRight');
   const nearWeight = await page.inputValue('#drawingDistanceFrom');
   const firstLayer = page.locator('#layerList input[type=checkbox]').first();
@@ -203,15 +216,28 @@ const { makeFixture } = require('./fixture');
   const exported = await page.evaluate((source) => {
     const root = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement;
     const layers = Array.from(root.querySelectorAll(':scope > g'));
+    const strokes = Array.from(root.querySelectorAll('[data-weight-mm] path'));
     return {
       tag: root.localName,
       width: parseFloat(root.getAttribute('width')) * 25.4,
+      height: parseFloat(root.getAttribute('height')) * 25.4,
+      viewBoxWidth: root.viewBox.baseVal.width,
+      viewBoxHeight: root.viewBox.baseVal.height,
       names: layers.map((layer) => layer.dataset.layer),
-      strokes: Array.from(root.querySelectorAll('[data-weight-mm] path'), (stroke) => stroke.getAttribute('d'))
+      strokes: strokes.map((stroke) => stroke.getAttribute('d')),
+      widths: strokes.map((stroke) => [
+        Number(stroke.getAttribute('stroke-width')),
+        Number(stroke.closest('[data-weight-mm]').dataset.weightMm) * 72 / 25.4
+      ])
     };
   }, svg);
   assert.strictEqual(exported.tag, 'svg');
   assert(Math.abs(exported.width - 420) < 1e-6, 'A3 landscape is exported at its physical width');
+  assert(Math.abs(exported.height - 297) < 1e-6);
+  assert(Math.abs(exported.viewBoxWidth - 420 * 72 / 25.4) < 1e-4, 'the SVG uses 72 units per inch');
+  assert(Math.abs(exported.viewBoxHeight - 297 * 72 / 25.4) < 1e-4);
+  assert(exported.widths.every(([actual, expected]) => Math.abs(actual - expected) < 1e-6),
+    'exported pen and section widths equal the sheet weights in points');
   assert(exported.names.some((name) => name.startsWith('Pen ')));
   assert(exported.names.includes('Section cuts'));
   assert(!exported.names.includes('Paper') && !exported.names.includes('Title and scale'));
@@ -253,6 +279,15 @@ const { makeFixture } = require('./fixture');
     assert.match(rhinoSvg, /data-layer="Title and scale"/);
     assert.match(rhinoSvg, /<path[^>]*aria-label="fixture/);
     assert.doesNotMatch(rhinoSvg, /clip-path=|<clipPath\b|<text\b|font-family=|<image\b/);
+    const scaleBar = await page.evaluate((source) => {
+      const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
+      const bar = svg.querySelector('[data-scale-metres]');
+      return {
+        length: Number(bar.getAttribute('x2')) - Number(bar.getAttribute('x1')),
+        expected: Number(bar.dataset.scaleMetres) * 1000 * 72 / (25.4 * Number(svg.querySelector('[data-scale-ratio]').dataset.scaleRatio))
+      };
+    }, rhinoSvg);
+    assert(Math.abs(scaleBar.length - scaleBar.expected) < 1e-6, 'exported geometry and scale bar share physical point coordinates');
     await page.uncheck('#exportAnnotations');
     await page.selectOption('#drawingPaper', 'tabloid');
     const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportBluebeam')]);

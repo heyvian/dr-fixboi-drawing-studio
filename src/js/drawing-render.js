@@ -27,7 +27,70 @@ function constructionGuides(model, camera, project, coordinate) {
     .join('');
 }
 
-// Project the complete model on a physical sheet. Clipping offsets keep a stable frame.
+function drawingViewport(paper, region) {
+  const pixelsPerMillimetre = DRAWING_PIXELS_PER_INCH / 25.4,
+    width = region?.width ?? Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
+    height = region?.height ?? Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
+    margin = region ? DRAWING_TILE_MARGIN : 10 * pixelsPerMillimetre,
+    drawingHeight = height - (region ? DRAWING_TILE_RESERVED_HEIGHT : margin * 3.2);
+  return { width, height, margin, drawingHeight, pixelsPerMillimetre };
+}
+
+function drawingProjection(geometry, camera, planes) {
+  const basis = orbitBasis(camera), { right, up, back } = basis;
+  const raw = geometry.points.map((p) => [dot(p, right), -dot(p, up), dot(p, back)]);
+  const clips = planes.map(({ normal, offset, flip }) => {
+    const sign = flip ? -1 : 1;
+    return { x: sign * dot(normal, right), y: -sign * dot(normal, up),
+      z: sign * dot(normal, back), level: sign * offset };
+  });
+  const bounds = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+  let ground = 0;
+  function include([x, y]) {
+    bounds.left = Math.min(bounds.left, x);
+    bounds.right = Math.max(bounds.right, x);
+    bounds.top = Math.min(bounds.top, y);
+    bounds.bottom = Math.max(bounds.bottom, y);
+  }
+  const inside = new Uint8Array(raw.length);
+  for (const [i, point] of raw.entries()) {
+    // Ground alignment uses the original model datum, even on a clipped drawing.
+    if (Math.abs(camera.el) > 0.01 && Math.abs(geometry.points[i][1]) <= 0.25)
+      ground = Math.max(ground, point[1]);
+    inside[i] = clips.every(plane => drawingDistance(point, plane) <= 1e-7);
+    if (inside[i]) include(point);
+  }
+  if (clips.length) {
+    // A clipping plane can introduce new extrema along an edge or across a face.
+    for (const { vertices: [a, b, c] } of geometry.faces) {
+      if (inside[a] && inside[b] && inside[c]) continue;
+      const triangle = [raw[a], raw[b], raw[c]];
+      if (clips.some(plane => triangle.every(point => drawingDistance(point, plane) > 1e-7))) continue;
+      const polygon = trimDrawingFace(triangle, clips);
+      if (polygon.length >= 3) polygon.forEach(include);
+    }
+    for (const { a, b } of geometry.lines) {
+      if (inside[a] && inside[b]) continue;
+      clipDrawingLine(raw[a], raw[b], clips)?.forEach(include);
+    }
+  }
+  const hasBounds = Number.isFinite(bounds.left);
+  return { basis, raw, clips, ground, hasBounds,
+    bounds: hasBounds ? bounds : { left: 0, top: 0, right: 0, bottom: 0 } };
+}
+
+function fittedDrawingScale(bounds, { width, margin, drawingHeight, pixelsPerMillimetre }) {
+  const padding = 3 * pixelsPerMillimetre;
+  const required = 1000 * pixelsPerMillimetre * Math.max(
+    (bounds.right - bounds.left) / Math.max(1, width - 2 * (margin + padding)),
+    (bounds.bottom - bounds.top) / Math.max(1, drawingHeight - 2 * padding)
+  );
+  const standard = DRAWING_SCALES.find((value) => value >= required);
+  // Prefer a nearby architectural scale, but avoid leaving most of the sheet unused.
+  return standard && standard <= required * 1.15 ? standard : Math.max(1, Math.ceil(required));
+}
+
+// Project, crop and render the drawing on a physical sheet.
 function renderDrawing(
   geometry,
   camera,
@@ -41,58 +104,18 @@ function renderDrawing(
   region = null,
   frame = null
 ) {
-  const width = region?.width ?? Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
-    height = region?.height ?? Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
-    pixelsPerMillimetre = DRAWING_PIXELS_PER_INCH / 25.4,
-    margin = region ? DRAWING_TILE_MARGIN : 10 * pixelsPerMillimetre,
-    drawingHeight = height - (region ? DRAWING_TILE_RESERVED_HEIGHT : margin * 3.2);
-  const basis = orbitBasis(camera),
-    { right, up, back } = basis,
-    raw = geometry.points.map((p) => [dot(p, right), -dot(p, up), dot(p, back)]);
-  let left = Infinity,
-    top = Infinity,
-    rightEdge = -Infinity,
-    bottom = -Infinity,
-    ground = 0;
-  for (const [i, [x, y]] of raw.entries()) {
-    left = Math.min(left, x);
-    rightEdge = Math.max(rightEdge, x);
-    top = Math.min(top, y);
-    bottom = Math.max(bottom, y);
-    // In an axonometric, anchor the foremost ground edge. Elevations use the zero grade datum.
-    if (Math.abs(camera.el) > 0.01 && Math.abs(geometry.points[i][1]) <= 0.25)
-      ground = Math.max(ground, y);
+  const viewport = drawingViewport(paper, region);
+  const { width, height, margin, drawingHeight, pixelsPerMillimetre } = viewport;
+  const { basis, raw, clips: modelClips, ground, bounds, hasBounds } = drawingProjection(geometry, camera, planes);
+  const { right, up, back } = basis;
+  let midX = (bounds.left + bounds.right) / 2, midY = (bounds.top + bounds.bottom) / 2;
+  // Manual scales can stay centred on a captured camera target until the user centres the drawing.
+  if (frame && scaleChoice !== 'auto' && !placement.center) {
+    midX = dot(frame.target, right);
+    midY = -dot(frame.target, up);
   }
-  if (!raw.length) {
-    left = top = 0;
-    rightEdge = bottom = 1;
-  }
-  const modelBounds = { left, rightEdge, top, bottom };
-  // A frame (from the 3D view) replaces the model bounds: centre on its target and make sure
-  // everything that was visible in the 3D window fits the sheet.
-  if (frame) {
-    const aspect = (width - margin * 2) / drawingHeight,
-      halfWidth = Math.max(frame.halfWidth, frame.halfHeight * aspect),
-      centerX = dot(frame.target, right),
-      centerY = -dot(frame.target, up);
-    left = centerX - halfWidth;
-    rightEdge = centerX + halfWidth;
-    top = centerY - halfWidth / aspect;
-    bottom = centerY + halfWidth / aspect;
-  }
-  const placementBounds = placement.center ? modelBounds : { left, rightEdge, top, bottom };
-  const available = Math.min(
-      (width - margin * 2) / (rightEdge - left),
-      drawingHeight / (bottom - top)
-    ),
-    minimumDenominator = (1000 * pixelsPerMillimetre) / available,
-    denominator =
-      scaleChoice === 'auto'
-        ? (DRAWING_SCALES.find((value) => value >= minimumDenominator) ?? DRAWING_SCALES.at(-1))
-        : Number(scaleChoice),
+  const denominator = scaleChoice === 'auto' ? fittedDrawingScale(bounds, viewport) : Number(scaleChoice),
     scale = (1000 * pixelsPerMillimetre) / denominator,
-    midX = (placementBounds.left + placementBounds.rightEdge) / 2,
-    midY = (placementBounds.top + placementBounds.bottom) / 2,
     originX = width / 2 - midX * scale + placement.x * pixelsPerMillimetre,
     centeredY = margin + drawingHeight / 2 - midY * scale,
     groundY = margin + drawingHeight - 5 * pixelsPerMillimetre,
@@ -113,13 +136,9 @@ function renderDrawing(
           owner: new Uint16Array(width * height)
         }
       : null;
-  // Transform model-space planes into the same pixel and depth coordinates as the mesh.
-  const clips = planes.map(({ normal, offset, flip }) => {
-    const sign = flip ? -1 : 1,
-      x = (sign * dot(normal, right)) / scale,
-      y = (-sign * dot(normal, up)) / scale;
-    return { x, y, z: sign * dot(normal, back), level: sign * offset + x * originX + y * originY };
-  });
+  const clips = modelClips.map(({ x, y, z, level }) => ({
+    x: x / scale, y: y / scale, z, level: level + (x * originX + y * originY) / scale
+  }));
   for (const face of geometry.faces) {
     const triangle = face.vertices.map((index) => projected[index]);
     const polygon = trimDrawingFace(triangle, clips);
@@ -359,11 +378,12 @@ function renderDrawing(
     denominator,
     margin,
     drawingHeight,
-    cropped:
-      originX + placementBounds.left * scale < margin - 0.1 ||
-      originX + placementBounds.rightEdge * scale > width - margin + 0.1 ||
-      originY + placementBounds.top * scale < margin - 0.1 ||
-      originY + placementBounds.bottom * scale > margin + drawingHeight + 0.1
+    cropped: hasBounds && (
+      originX + bounds.left * scale < margin - 0.1 ||
+      originX + bounds.right * scale > width - margin + 0.1 ||
+      originY + bounds.top * scale < margin - 0.1 ||
+      originY + bounds.bottom * scale > margin + drawingHeight + 0.1
+    )
   };
 }
 

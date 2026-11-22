@@ -72,6 +72,37 @@ function outlineDrawingLabels(root) {
   for (const node of root.querySelectorAll('[font-family], [font-size], [font-weight]'))
     for (const attribute of ['font-family', 'font-size', 'font-weight']) node.removeAttribute(attribute);
 }
+
+// Use 72 viewBox units per inch so each numeric stroke width is its actual width in points.
+// Convert the geometry itself so editors can separate layers without carrying a scaling transform.
+function convertDrawingSvgToPoints(root) {
+  const pointsPerUnit = 72 / DRAWING_PIXELS_PER_INCH;
+  const number = /[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:e[-+]?\d+)?/gi;
+  const points = (value) => Number((Number(value) * pointsPerUnit).toFixed(6));
+  const lengthsInPoints = (values) => (values.match(number) || []).map(points).join(' ');
+  const lengths = ['x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
+    'width', 'height', 'stroke-width', 'stroke-dasharray', 'stroke-dashoffset'];
+  root.setAttribute('viewBox', lengthsInPoints(root.getAttribute('viewBox')));
+  for (const item of root.querySelectorAll('path, line, rect, circle, [transform]')) {
+    for (const attribute of lengths) {
+      const value = item.getAttribute(attribute);
+      if (value !== null && value !== 'none') item.setAttribute(attribute, lengthsInPoints(value));
+    }
+    // The scale-bar strokes and sheet rule use the default width in the preview.
+    if (item.hasAttribute('stroke') && !item.hasAttribute('stroke-width'))
+      item.setAttribute('stroke-width', points(1));
+    // The renderer and the outlined glyphs emit paths whose arguments are all lengths.
+    if (item.hasAttribute('d'))
+      item.setAttribute('d', item.getAttribute('d').replace(/([a-df-z])([^a-df-z]*)/gi,
+        (_, command, values) => command + lengthsInPoints(values)));
+    // Floor placement and the north arrow use translations. Arrow rotation is about its local origin.
+    if (item.hasAttribute('transform'))
+      item.setAttribute('transform', item.getAttribute('transform').replace(/translate\(([^)]*)\)/g,
+        (_, values) => `translate(${lengthsInPoints(values)})`));
+  }
+  return root;
+}
+
 let pdfTools;
 async function createBluebeamPdf(svg, { width, height }) {
   function loadScript(name) {

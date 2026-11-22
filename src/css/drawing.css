@@ -26,7 +26,6 @@
  background: var(--paper);
 }
 .drawing-view-field { display: grid; gap: 4px; }
-.drawing-pen-settings { display: grid; gap: 7px; }
 .drawing-colours { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: end; }
 .drawing-pen-row { display: grid; grid-template-columns: minmax(0, 1fr) 51px 32px; align-items: center; gap: 4px 6px; margin: 8px 0; }
 .drawing-pen-row span { grid-column: 1/-1; }
@@ -98,7 +97,6 @@
 .drawing-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
 .drawing-toolbar label { display: grid; gap: 3px; font-size: 11px; font-weight: 600; }
 .drawing-toolbar select { min-height: 30px; color: var(--ink); font: inherit; }
-.drawing-toolbar #exportDrawing { margin-left: auto; }
 .drawing-stage .hint { margin: 0; }
 .drawing-paper { display: grid; place-items: center; min-height: 0; flex: 1; }
 .drawing-sheet {

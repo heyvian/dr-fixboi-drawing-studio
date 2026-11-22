@@ -18,9 +18,9 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Dr. FixBoi®’s Drawing Studio" />
     <meta name="twitter:image" content="https://heyvian.github.io/dr-fixboi-drawing-studio/src/assets/share/social-card.png" />
-    <link rel="icon" sizes="any" href="src/assets/share/favicon.ico" />
-    <link rel="icon" type="image/svg+xml" href="src/assets/share/favicon.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="src/assets/share/apple-touch-icon.png" />
+    <link rel="icon" sizes="16x16 32x32 48x48" href="src/assets/share/favicon.ico?v=2" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="src/assets/share/favicon.svg?v=2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="src/assets/share/apple-touch-icon.png?v=2" />
     <link rel="manifest" href="site.webmanifest" />
     <link rel="stylesheet" href="src/css/base.css" />
     <link rel="stylesheet" href="src/css/layout.css" />
@@ -148,6 +148,13 @@
                 <option value="aligned" disabled>Aligned to clipping plane</option>
               </select>
             </label>
+            <button
+              type="button"
+              id="useNavView"
+              title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
+            >
+              Recapture 3D view
+            </button>
             <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
             <div id="drawingOrientationHelp" class="orientation-help" hidden>
               <p class="hint">Each projection remembers its own direction.</p>
@@ -165,6 +172,7 @@
                 <option value="floors">All floor plans</option>
               </select>
             </label>
+            <button type="button" id="printFloorSet" title="Print each floor on its own sheet" hidden>Print floor set</button>
           </fieldset>
           <label class="drawing-view-field"
             >Rendering
@@ -211,85 +219,6 @@
             </label>
           </details>
 
-          <details class="calc-details drawing-pen-settings">
-            <summary>Line weights</summary>
-            <label class="drawing-view-field"
-              >Drawing style
-              <select id="drawingPenStyle">
-                <option value="standard">Standard line drawing</option>
-                <option value="sketch">Pen over pencil</option>
-              </select>
-            </label>
-            <div class="drawing-colours">
-              <label class="drawing-view-field">Paper colour <input id="drawingPaperColor" type="color" /></label>
-              <label class="drawing-view-field"
-                >Set all pen colours <input id="drawingInkColor" type="color"
-              /></label>
-            </div>
-            <label class="drawing-view-field"
-              >Weight assignment
-              <select id="drawingPenMode">
-                <option value="distance">Camera distance</option>
-                <option value="component">Layers</option>
-                <option value="profile">Outlines and detail</option>
-              </select>
-            </label>
-            <div id="drawingDistanceFields" class="drawing-distance">
-              <label class="drawing-view-field"
-                >Heaviest pen until <output id="drawingDistanceFromOut">0%</output>
-                <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" />
-              </label>
-              <label class="drawing-view-field"
-                >Lightest pen from <output id="drawingDistanceToOut">100%</output>
-                <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" />
-              </label>
-              <p class="hint">
-                Percent of the depth from the nearest to the farthest visible line. Lines nearer than the
-                first threshold use the heaviest pen, lines beyond the second the lightest, and the pens
-                share the span between.
-              </p>
-            </div>
-            <div class="nav-lines" role="group" aria-labelledby="drawingEdgesTitle">
-              <strong id="drawingEdgesTitle">Drawn edges</strong>
-              <label><input type="checkbox" id="drawingCurves" /> Curves and wire edges</label>
-              <label><input type="checkbox" id="drawingOpenEdges" /> Open edges (surface boundaries)</label>
-              <label><input type="checkbox" id="drawingSilhouettes" /> Silhouettes</label>
-              <label><input type="checkbox" id="drawingCreases" /> Creases</label>
-              <label class="nav-angle">Crease angle
-                <input type="range" id="drawingCreaseAngle" min="5" max="90" step="1" value="10" />
-                <output id="drawingCreaseOut">10°</output>
-              </label>
-            </div>
-            <label class="check"
-              ><input id="drawingSilhouette" type="checkbox" aria-describedby="drawingOutlineNote" />
-              Overall silhouette</label
-            >
-            <label class="check"
-              ><input id="drawingComponentOutlines" type="checkbox" aria-describedby="drawingOutlineNote" />
-              Key outlines</label
-            >
-            <p class="hint" id="drawingOutlineNote">
-              Use the heaviest pen on the model perimeter, or on each outline body chosen under Layers.
-            </p>
-            <label class="drawing-view-field"
-              >Number of weights
-              <select id="drawingPenCount">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-              </select>
-            </label>
-            <label class="check"
-              ><input id="drawingAdaptWeights" type="checkbox" aria-describedby="drawingPenScaleNote" />
-              Adapt weights to scale</label
-            >
-            <p class="hint" id="drawingPenScaleNote">Widths stay fixed on paper at every scale.</p>
-            <div id="drawingPenWidths"></div>
-            <div id="drawingPenComponents" hidden></div>
-            <p class="hint">Weights are in printed millimetres. Section cuts use the heaviest weight.</p>
-          </details>
 
           <label class="check"><input type="checkbox" id="drawingGlazing" /> See through glazing</label>
           <h3>Clipping planes</h3>
@@ -354,13 +283,15 @@
         </aside>
 
         <div class="nav-stage" id="navStage">
-          <div class="drawing-toolbar">
-            <button type="button" id="navExtents" title="Fit the whole model in the window (Home)">
-              Zoom extents
-            </button>
-            <button type="button" id="navSetFocus" aria-pressed="false" title="Click a point in the model to orbit around it (double-click also works)">
-              Set orbit centre
-            </button>
+          <div class="drawing-toolbar nav-toolbar">
+            <div class="nav-tools" role="group" aria-label="Camera tools">
+              <button type="button" id="navExtents" title="Fit the whole model in the window (Home)">
+                Zoom extents
+              </button>
+              <button type="button" id="navSetFocus" aria-pressed="false" title="Click a point in the model to orbit around it (double-click also works)">
+                Set orbit centre
+              </button>
+            </div>
             <fieldset class="view-box nav-view-box">
               <legend>View</legend>
               <div class="nav-view-preferences">
@@ -392,52 +323,131 @@
             <button type="button" data-sheet-view="elevation" aria-pressed="false">Elevation</button>
             <button type="button" data-sheet-view="aligned" aria-pressed="false" disabled>Clipping plane</button>
           </div>
-          <div class="drawing-toolbar">
-            <button
-              type="button"
-              id="useNavView"
-              title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
-            >
-              Recapture 3D view
-            </button>
-            <label
-              >Paper size
-              <select id="drawingPaper">
-                <option value="letter">Letter · 8.5 × 11 in</option>
-                <option value="tabloid">Tabloid · 11 × 17 in</option>
-                <option value="a4">A4 · 210 × 297 mm</option>
-                <option value="a3">A3 · 297 × 420 mm</option>
-                <option value="a2">A2 · 420 × 594 mm</option>
-              </select>
-            </label>
-            <label
-              >Page orientation
-              <select id="drawingOrientation">
-                <option value="landscape">Landscape</option>
-                <option value="portrait">Portrait</option>
-              </select>
-            </label>
-            <label
-              >Scale
-              <select id="drawingScale">
-                <option value="auto">Auto fit</option>
-              </select>
-            </label>
-            <button type="button" id="fitDrawing" title="Center the drawing and fit its scale to the sheet">
-              Fit
-            </button>
-            <button type="button" id="centerDrawing" title="Center the drawing at its current scale">Center</button>
-            <button
-              type="button"
-              id="groundDrawing"
-              title="Align ground 5 mm above the bottom drawing margin"
-            >
-              Ground
-            </button>
-            <button type="button" class="primary" id="exportDrawing" title="Download editable SVG for Illustrator" disabled>Export SVG</button>
-            <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
-            <button type="button" id="printDrawing" disabled>Print / PDF</button>
-            <button type="button" id="printFloorSet" hidden>Print floor set</button>
+          <div class="drawing-toolbar sheet-toolbar">
+            <div class="toolbar-group" role="group" aria-label="Paper and scale">
+              <label
+                >Paper size
+                <select id="drawingPaper">
+                  <option value="letter">Letter · 8.5 × 11 in</option>
+                  <option value="tabloid">Tabloid · 11 × 17 in</option>
+                  <option value="a4">A4 · 210 × 297 mm</option>
+                  <option value="a3">A3 · 297 × 420 mm</option>
+                  <option value="a2">A2 · 420 × 594 mm</option>
+                </select>
+              </label>
+              <label
+                >Page orientation
+                <select id="drawingOrientation">
+                  <option value="landscape">Landscape</option>
+                  <option value="portrait">Portrait</option>
+                </select>
+              </label>
+              <label
+                >Scale
+                <select id="drawingScale">
+                  <option value="auto">Auto fit</option>
+                </select>
+              </label>
+            </div>
+            <div class="toolbar-group" role="group" aria-label="Drawing placement">
+              <button type="button" id="fitDrawing" title="Center the drawing and fit its scale to the sheet">
+                Fit
+              </button>
+              <button type="button" id="centerDrawing" title="Center the drawing at its current scale">Center</button>
+              <button
+                type="button"
+                id="groundDrawing"
+                title="Align ground 5 mm above the bottom drawing margin"
+              >
+                Ground
+              </button>
+            </div>
+            <details class="drawing-pen-settings" id="penMenu">
+              <summary id="penMenuToggle">Line weights</summary>
+              <div class="pen-panel">
+                <label class="drawing-view-field"
+                  >Drawing style
+                  <select id="drawingPenStyle">
+                    <option value="standard">Standard line drawing</option>
+                    <option value="sketch">Pen over pencil</option>
+                  </select>
+                </label>
+                <div class="drawing-colours">
+                  <label class="drawing-view-field">Paper colour <input id="drawingPaperColor" type="color" /></label>
+                  <label class="drawing-view-field"
+                    >Set all pen colours <input id="drawingInkColor" type="color"
+                  /></label>
+                </div>
+                <label class="drawing-view-field"
+                  >Number of weights
+                  <select id="drawingPenCount">
+                    <option>1</option>
+                    <option>2</option>
+                    <option>3</option>
+                    <option>4</option>
+                    <option>5</option>
+                  </select>
+                </label>
+                <label class="check"
+                  ><input id="drawingAdaptWeights" type="checkbox" aria-describedby="drawingPenScaleNote" />
+                  Adapt weights to scale</label
+                >
+                <p class="hint" id="drawingPenScaleNote">Widths stay fixed on paper at every scale.</p>
+                <div id="drawingPenWidths"></div>
+                <p class="hint">Weights are in printed millimetres. Section cuts use the heaviest weight.</p>
+                <label class="drawing-view-field"
+                  >Weight assignment
+                  <select id="drawingPenMode">
+                    <option value="distance">Camera distance</option>
+                    <option value="component">Layers</option>
+                    <option value="profile">Outlines and detail</option>
+                  </select>
+                </label>
+                <div id="drawingDistanceFields" class="drawing-distance">
+                  <label class="drawing-view-field"
+                    >Heaviest pen until <output id="drawingDistanceFromOut">0%</output>
+                    <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" />
+                  </label>
+                  <label class="drawing-view-field"
+                    >Lightest pen from <output id="drawingDistanceToOut">100%</output>
+                    <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" />
+                  </label>
+                  <p class="hint">
+                    Percent of the depth from the nearest to the farthest visible line. Lines nearer than the
+                    first threshold use the heaviest pen, lines beyond the second the lightest, and the pens
+                    share the span between.
+                  </p>
+                </div>
+                <div id="drawingPenComponents" hidden></div>
+                <div class="nav-lines" role="group" aria-labelledby="drawingEdgesTitle">
+                  <strong id="drawingEdgesTitle">Drawn edges</strong>
+                  <label><input type="checkbox" id="drawingCurves" /> Curves and wire edges</label>
+                  <label><input type="checkbox" id="drawingOpenEdges" /> Open edges (surface boundaries)</label>
+                  <label><input type="checkbox" id="drawingSilhouettes" /> Silhouettes</label>
+                  <label><input type="checkbox" id="drawingCreases" /> Creases</label>
+                  <label class="nav-angle">Crease angle
+                    <input type="range" id="drawingCreaseAngle" min="5" max="90" step="1" value="10" />
+                    <output id="drawingCreaseOut">10°</output>
+                  </label>
+                </div>
+                <label class="check"
+                  ><input id="drawingSilhouette" type="checkbox" aria-describedby="drawingOutlineNote" />
+                  Overall silhouette</label
+                >
+                <label class="check"
+                  ><input id="drawingComponentOutlines" type="checkbox" aria-describedby="drawingOutlineNote" />
+                  Key outlines</label
+                >
+                <p class="hint" id="drawingOutlineNote">
+                  Use the heaviest pen on the model perimeter, or on each outline body chosen under Layers.
+                </p>
+              </div>
+            </details>
+            <div class="toolbar-group export-tools" role="group" aria-label="Export and print">
+              <button type="button" class="primary" id="exportDrawing" title="Download editable SVG for Illustrator" disabled>Export SVG</button>
+              <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
+              <button type="button" id="printDrawing" disabled>Print / PDF</button>
+            </div>
           </div>
           <p class="hint" id="drawingStatus" role="status">Open a Rhino file to begin.</p>
           <div id="drawingPaperFrame" class="drawing-paper">
