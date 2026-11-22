@@ -47,6 +47,25 @@ async function makeFixture() {
   doc.objects().addCircle(new r.Circle([0, 0, 0], mm(2)), on(3, 'Circle'));
   doc.objects().add(mesh, on(2, 'Hidden mesh'));
 
+  const material = new r.Material();
+  material.diffuseColor = { r: 12, g: 34, b: 56, a: 255 };
+  doc.materials().add(material);
+  const materialLine = on(3, 'Material colour');
+  materialLine.colorSource = r.ObjectColorSource.ColorFromMaterial;
+  materialLine.materialSource = r.ObjectMaterialSource.MaterialFromObject;
+  materialLine.materialIndex = 0;
+  doc.objects().addLine([0, 0, 0], [mm(1), 0, 0], materialLine);
+
+  const member = on(1, 'Block member');
+  member.colorSource = r.ObjectColorSource.ColorFromParent;
+  const definitions = doc.instanceDefinitions();
+  const index = definitions.add('Colour block', '', '', '', [0, 0, 0],
+    [new r.LineCurve([0, 0, 0], [mm(1), 0, 0])], [member]);
+  const instance = on(0, 'Block instance');
+  instance.colorSource = r.ObjectColorSource.ColorFromObject;
+  instance.objectColor = { r: 85, g: 102, b: 119, a: 255 };
+  doc.objects().add(new r.InstanceReference(definitions.findIndex(index).id, r.Transform.translationXYZ(0, mm(2), 0)), instance);
+
   return { r, bytes: doc.toByteArray() };
 }
 

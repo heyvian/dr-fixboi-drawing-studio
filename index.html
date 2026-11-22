@@ -3,24 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Poly Nation Drawings</title>
+    <title>Dr. FixBoi®’s Drawing Studio</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2322221f'/%3E%3Cpath d='M5 5h22v22H5zM16 5v22M5 16h22' fill='none' stroke='%23e48773'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23e48773'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="src/css/base.css" />
     <link rel="stylesheet" href="src/css/layout.css" />
     <link rel="stylesheet" href="src/css/drawing.css" />
+    <link rel="stylesheet" href="src/css/studio.css" />
     <link rel="stylesheet" href="src/css/print.css" />
   </head>
   <!-- drawings-open lets the shared print rules apply to this single-workspace app. -->
   <body class="drawings-open">
     <header class="app-header">
-      <div>
-        <h1>Poly Nation Drawings</h1>
-        <p class="sub">Orthographic drawings, plans and sections from a Rhino model</p>
+      <div class="app-identity" aria-label="Dr. FixBoi®’s Drawing Studio">
+        <span class="registration-mark" aria-hidden="true"></span>
+        <div>
+          <h1>Dr. FixBoi<sup>®</sup>’s</h1>
+          <p class="sub">Drawing studio</p>
+        </div>
       </div>
       <div class="mode-tabs" role="group" aria-label="Mode">
-        <button type="button" id="modeNav" aria-pressed="true" disabled>3D navigate</button>
-        <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing</button>
+        <button type="button" id="modeNav" aria-pressed="true" disabled>3D Model</button>
+        <button type="button" id="modeDraw" aria-pressed="false" disabled>Drawing Sheet</button>
       </div>
       <div class="header-actions">
+        <button type="button" id="openCredits">Credits</button>
         <span id="fileName" class="file-name" hidden></span>
         <label class="drawing-view-field">
           <span class="hint">Model units</span>
@@ -33,7 +39,7 @@
             <option value="ft">Feet</option>
           </select>
         </label>
-        <button type="button" class="primary" id="openFile">Open Rhino file…</button>
+        <button type="button" class="primary" id="openFile">Open model…</button>
         <button type="button" id="loadSample">Load sample</button>
         <input id="fileInput" type="file" accept=".3dm,.obj" hidden />
       </div>
@@ -43,26 +49,30 @@
     <main id="dropArea">
       <div id="dropZone" class="drop-zone">
         <div class="box">
-          <h2>Drop a Rhino file here</h2>
-          <p>
-            Open a <strong>.3dm</strong> file to draw plans, elevations, axonometrics and sections.
-            Meshes, extrusions, Breps with render meshes and curves are read; an <strong>.obj</strong>
-            file also works.
-          </p>
-          <p class="hint">
-            Rhino files are read in your browser with rhino3dm. Nothing is uploaded to a server.
-            Loading the reader needs an internet connection the first time.
-          </p>
-          <div class="actions">
-            <button type="button" class="primary" id="openFileZone">Choose file…</button>
-            <button type="button" id="loadSampleZone">Try the sample</button>
+          <div class="landing-field" aria-hidden="true">
+            <div class="field-orbit"></div>
+            <div class="field-incision"></div>
+            <div class="field-datum"></div>
           </div>
+          <div class="landing-intro">
+            <h2><span>I draw fast.</span><em>You make it art<span>.</span></em></h2>
+            <p class="landing-description">Dr. FixBoi gets the plans, sections, elevations and axonometrics out of your model and into Illustrator. I'll output the linework so you can add your special touch. Make those drawings have some <em>rizz</em> as they say.</p>
+            <div class="actions">
+              <button type="button" class="primary" id="openFileZone">Open Rhino or OBJ</button>
+              <button type="button" id="loadSampleZone">Load sample</button>
+            </div>
+            <p class="landing-note">Drop a .3dm or .obj file anywhere on the plate. Files are processed in your browser.</p>
+          </div>
+          <figure class="sample-fragment">
+            <img src="src/assets/sample-axonometric.png" alt="Axonometric line drawing of the sample building" width="1360" height="882" />
+            <figcaption>Sample building / Axonometric</figcaption>
+          </figure>
         </div>
       </div>
 
       <section id="drawingsPhase" class="drawing-workspace" aria-labelledby="drawingsTitle">
         <aside class="drawing-controls" id="drawingControls" inert>
-          <h2 id="drawingsTitle" tabindex="-1">Drawings</h2>
+          <h2 id="drawingsTitle" tabindex="-1">Controls</h2>
           <div class="nav-only" id="navHelp">
             <p class="hint">
               Move around the model to choose what to draw. Switching to <strong>Drawing</strong> uses
@@ -94,13 +104,17 @@
             >Sheet title
             <input id="drawingTitle" type="text" autocomplete="off" />
           </label>
+          <div class="sheet-identification">
+            <label class="drawing-view-field">Sheet no. <input id="drawingNumber" type="text" maxlength="24" autocomplete="off" placeholder="A-101" /></label>
+            <label class="drawing-view-field">Revision <input id="drawingRevision" type="text" maxlength="16" autocomplete="off" /></label>
+          </div>
           <label class="drawing-view-field"
             >View
             <select id="drawingView">
               <option value="axo">Axonometric</option>
               <option value="plan">Plan</option>
               <option value="elevation">Elevation</option>
-              <option value="nav">From 3D view</option>
+              <option value="nav">Captured view</option>
               <option value="aligned" disabled>Aligned to clipping plane</option>
             </select>
           </label>
@@ -121,12 +135,31 @@
             <select id="drawingRendering">
               <option value="linework">Linework</option>
               <option value="color">Hybrid · layer or object colour</option>
+              <option value="flat">Flat · exact model colours</option>
             </select>
           </label>
           <label class="drawing-view-field"
             >Storey height (m)
             <input id="drawingStorey" type="number" min="1" max="20" step="0.1" />
           </label>
+
+          <details class="calc-details" open>
+            <summary>Saved views</summary>
+            <label class="drawing-view-field">
+              View name
+              <input id="savedViewName" type="text" maxlength="80" autocomplete="off" placeholder="South elevation" />
+            </label>
+            <label class="drawing-view-field saved-view-list">
+              Saved for this model
+              <select id="savedViews"></select>
+            </label>
+            <div class="saved-view-actions">
+              <button id="saveView" type="button" title="Save or update the view with this name">Save current</button>
+              <button id="recallView" type="button" disabled>Recall</button>
+              <button id="deleteView" type="button" disabled>Delete</button>
+            </div>
+            <p id="savedViewStatus" class="hint" role="status" hidden></p>
+          </details>
 
           <details class="calc-details keep-in-nav" open>
             <summary>Layers</summary>
@@ -265,11 +298,20 @@
               <button type="button" id="alignDrawingPlane">Align view</button>
             </div>
           </div>
-          <details class="drawing-export-help">
-            <summary>Illustrator layers</summary>
+          <details class="calc-details drawing-export-help">
+            <summary>SVG and Illustrator</summary>
+            <label class="check"><input id="exportPaper" type="checkbox" checked /> Include paper background</label>
+            <label class="check"><input id="exportAnnotations" type="checkbox" checked /> Include title, scale and floor labels</label>
+            <label class="drawing-view-field">
+              Path editing
+              <select id="exportPaths">
+                <option value="batch">Grouped strokes</option>
+                <option value="individual">Individually selectable strokes</option>
+              </select>
+            </label>
             <p class="hint">
-              For native layers, run the script in Illustrator using File → Scripts → Other Script, then
-              select your exported SVG.
+              Open the SVG in Illustrator for editable groups. To create named layers and save an
+              AI file, run the script from File → Scripts → Other Script and select the SVG.
             </p>
             <a href="tools/Poly-Nation-SVG-to-Layers.jsx" download>Download Illustrator layer script</a>
           </details>
@@ -310,19 +352,29 @@
         </div>
 
         <div class="drawing-stage" id="drawingStage" hidden>
+          <div id="sheetViews" class="sheet-views" role="group" aria-label="Sheet projection">
+            <button type="button" data-sheet-view="nav" aria-pressed="false">Captured view</button>
+            <button type="button" data-sheet-view="axo" aria-pressed="false">Axonometric</button>
+            <button type="button" data-sheet-view="plan" aria-pressed="false">Plan</button>
+            <button type="button" data-sheet-view="elevation" aria-pressed="false">Elevation</button>
+            <button type="button" data-sheet-view="aligned" aria-pressed="false" disabled>Clipping plane</button>
+          </div>
           <div class="drawing-toolbar">
             <button
               type="button"
               id="useNavView"
               title="Set the drawing's starting view from the current 3D view. Moves made on the sheet are reset."
             >
-              Use 3D view
+              Recapture 3D view
             </button>
             <label
               >Paper size
               <select id="drawingPaper">
                 <option value="letter">Letter · 8.5 × 11 in</option>
                 <option value="tabloid">Tabloid · 11 × 17 in</option>
+                <option value="a4">A4 · 210 × 297 mm</option>
+                <option value="a3">A3 · 297 × 420 mm</option>
+                <option value="a2">A2 · 420 × 594 mm</option>
               </select>
             </label>
             <label
@@ -348,12 +400,13 @@
             >
               Ground
             </button>
-            <button type="button" class="primary" id="exportDrawing" disabled>Export SVG</button>
+            <button type="button" class="primary" id="exportDrawing" title="Download editable SVG for Illustrator" disabled>Export SVG</button>
             <button type="button" id="printDrawing" disabled>Print / PDF</button>
             <button type="button" id="printFloorSet" hidden>Print floor set</button>
           </div>
           <p class="hint" id="drawingStatus" role="status">Open a Rhino file to begin.</p>
           <div id="drawingPaperFrame" class="drawing-paper">
+            <div class="workbench-fragments" aria-hidden="true"></div>
             <svg
               id="drawingSheet"
               class="drawing-sheet"
@@ -368,6 +421,16 @@
       </section>
     </main>
     <div id="floorPrintPages" aria-hidden="true"></div>
+    <dialog id="studioCredits" aria-labelledby="creditsTitle">
+      <form method="dialog"><button aria-label="Close credits">Close</button></form>
+      <h2 id="creditsTitle">Open-source credits</h2>
+      <ul>
+        <li><a href="https://github.com/mcneel/rhino3dm">rhino3dm</a> and <a href="https://github.com/mcneel/opennurbs">openNURBS</a> read Rhino files and their geometry and display attributes.</li>
+        <li><a href="https://opentype.js.org/">OpenType.js</a> converts sheet labels to vector outlines using <a href="https://dejavu-fonts.github.io/">DejaVu Sans</a>, subset with <a href="https://fonttools.readthedocs.io/">FontTools</a>.</li>
+        <li><a href="https://nodejs.org/">Node.js</a> runs the development server. <a href="https://playwright.dev/">Playwright</a> and <a href="https://www.chromium.org/">Chromium</a> run the browser tests.</li>
+      </ul>
+      <p><a href="src/vendor/opentype-LICENSE.txt">OpenType.js licence</a> · <a href="src/vendor/DejaVu-LICENSE.txt">DejaVu licence</a></p>
+    </dialog>
 
     <!-- Classic scripts, in dependency order. They share globals so the app runs from file://. -->
     <script src="src/js/util.js"></script>
@@ -375,6 +438,9 @@
     <script src="src/js/drawing-render.js"></script>
     <script src="src/js/model-import.js"></script>
     <script src="src/js/navigate.js"></script>
+    <script src="src/vendor/opentype.min.js"></script>
+    <script src="src/vendor/label-font.js"></script>
+    <script src="src/js/drawing-export.js"></script>
     <script src="src/js/drawing-ui.js"></script>
     <script src="src/js/app.js"></script>
   </body>

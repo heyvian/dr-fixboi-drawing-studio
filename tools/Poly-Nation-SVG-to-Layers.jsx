@@ -1,11 +1,11 @@
-/* Open a Poly Nation SVG as an Illustrator document with top-level, named layers.
+/* Open a Drawing Studio SVG as an Illustrator document with top-level, named layers.
  * Run from Illustrator's File > Scripts > Other Script menu. The source SVG is kept on disk.
  */
 (function () {
-    var source = File.openDialog('Select an SVG exported from Poly Nation');
+    var source = File.openDialog('Select an SVG exported from Dr. FixBoi’s Drawing Studio');
     if (!source) return;
     if (!/\.svg$/i.test(source.name)) {
-        alert('Select a Poly Nation SVG drawing.');
+        alert('Select a Drawing Studio SVG drawing.');
         return;
     }
 
@@ -22,8 +22,10 @@
                 return tag + '<text x="3" y="6" font-size="3" font-family="Arial" fill="#000000">' +
                     marker + '</text>';
             });
-        if (entries.length < 3 || entries[0].label !== 'Paper' ||
-                entries[entries.length - 1].label !== 'Title and scale') {
+        var currentExport = /<svg\b[^>]*\sdata-poly-nation-export=["']2["']/.test(svg);
+        var legacyExport = entries.length >= 3 && entries[0].label === 'Paper' &&
+            entries[entries.length - 1].label === 'Title and scale';
+        if (!entries.length || (!currentExport && !legacyExport)) {
             throw new Error('This SVG has no Poly Nation layer list. Choose a drawing from Export SVG.');
         }
         for (var i = 0; i < entries.length; i++) {
@@ -98,16 +100,31 @@
             layer = original[i];
             if (!layer.pageItems.length && !layer.layers.length) layer.remove();
         }
-        alert('Poly Nation layers are ready. Use File > Save As to save an Illustrator document.');
     } catch (error) {
         if (drawing) {
             // Failed staging leaves the original grouped SVG available and discards temporary ink.
             drawing.close(SaveOptions.DONOTSAVECHANGES);
             app.open(source);
         }
-        alert('The Poly Nation SVG could not be organized into layers.\n' + error.message);
+        alert('The Drawing Studio SVG could not be organized into layers.\n' + error.message);
+        return;
     } finally {
         if (tempFile && tempFile.exists) tempFile.remove();
         if (tempFolder && tempFolder.exists) tempFolder.remove();
+    }
+
+    try {
+        var suggestion = new File(source.fsName.replace(/\.svg$/i, '.ai'));
+        var destination = suggestion.saveDlg('Save the layered Illustrator document');
+        if (!destination) return;
+        if (!/\.ai$/i.test(destination.name)) {
+            destination = new File(destination.fsName + '.ai');
+            if (destination.exists && !confirm('Replace ' + destination.name + '?')) return;
+        }
+        var options = new IllustratorSaveOptions();
+        options.pdfCompatible = true;
+        drawing.saveAs(destination, options);
+    } catch (error) {
+        alert('The layers are ready. Use File > Save As to save the Illustrator document.\n' + error.message);
     }
 }());

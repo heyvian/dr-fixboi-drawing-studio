@@ -176,7 +176,8 @@ function trimDrawingFace(triangle, clips) {
   return polygon;
 }
 
-function drawingFaceColor(face, sun) {
+function drawingFaceColor(face, sun, flat) {
+  if (flat) return face.color.map((channel) => channel * 255);
   const shade = 0.82 + 0.18 * Math.abs(dot(face.normal, sun));
   // Keep the wash light enough for the architectural strokes and section cuts to read over it.
   return face.color.map((channel) => (0.49 + 0.51 * channel * shade) * 255);
@@ -291,7 +292,7 @@ function traceDrawingFills(pixels, width, height, resolution) {
 
 // Export uses a finer sampling grid than the interactive wash, with the same clipping and depth
 // rules. Its result is a set of editable SVG fills, one compound path per visible colour.
-function drawingExportFills(geometry, projected, seeThrough, clips, width, height, sun) {
+function drawingExportFills(geometry, projected, seeThrough, clips, width, height, sun, flat) {
   const resolution = 2,
     columns = width * resolution,
     rows = height * resolution,
@@ -311,7 +312,7 @@ function drawingExportFills(geometry, projected, seeThrough, clips, width, heigh
       planes
     );
     if (polygon.length >= 3)
-      rasterDrawingPolygon(depth, columns, rows, polygon, pixels, drawingFaceColor(face, sun));
+      rasterDrawingPolygon(depth, columns, rows, polygon, pixels, drawingFaceColor(face, sun, flat));
   }
   return traceDrawingFills(pixels, columns, rows, resolution);
 }

@@ -4,13 +4,27 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.jsx': 'text/plain' };
+const types = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+  '.jsx': 'text/plain', '.png': 'image/png', '.webp': 'image/webp', '.wasm': 'application/wasm'
+};
+const vendor = '/vendor/rhino3dm/';
+const readerFiles = new Set(['rhino3dm.module.min.js', 'rhino3dm.wasm']);
 
 http
   .createServer((req, res) => {
-    const rel = decodeURIComponent(req.url.split('?')[0]);
-    const file = path.join(root, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    let rel;
+    try {
+      rel = decodeURIComponent(req.url.split('?')[0]);
+    } catch {
+      res.writeHead(400).end('Invalid path');
+      return;
+    }
+    const readerFile = rel.startsWith(vendor) ? rel.slice(vendor.length) : '';
+    const file = readerFiles.has(readerFile)
+      ? path.join(root, 'node_modules', 'rhino3dm', readerFile)
+      : path.resolve(root, '.' + (rel === '/' ? '/index.html' : rel));
+    if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       res.writeHead(404).end('Not found');
       return;
     }

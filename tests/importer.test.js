@@ -35,6 +35,14 @@ const { importRhino, importObj, sampleModel, DRAWING_COMPONENTS } = sandbox.api;
   // Plan convention: Rhino +Y becomes drawing +Z and Rhino +X becomes drawing -X.
   const mesh = model.assemble();
   assert(mesh.solid.length === 12 * 30 && mesh.lines.length > 0);
+  assert.deepStrictEqual(Array.from(mesh.solid.slice(6, 9), (value) => Math.round(value * 255)), [200, 60, 60]);
+  const colorOf = (name) => {
+    const group = mesh.groups.find((group) => group.name === name);
+    return Array.from(mesh.lines.slice(group.lines + 6, group.lines + 9), (value) => Math.round(value * 255));
+  };
+  assert.deepStrictEqual(colorOf('Material colour'), [12, 34, 56]);
+  assert.deepStrictEqual(colorOf('Block member'), [85, 102, 119]);
+  assert.strictEqual(mesh.groups.find((group) => group.name === 'Block member').layer, 'Glazing');
   let minY = Infinity;
   for (let i = 0; i < mesh.solid.length; i += 10) minY = Math.min(minY, mesh.solid[i + 1]);
   assert.strictEqual(minY, 0, 'lowest point is on the ground datum');

@@ -47,15 +47,15 @@
   }
 
   // Hand a finished model to the workspace and rebuild the layer list.
-  function show(model, label) {
+  function show(model, label, identity) {
     current = model;
     controls.inert = false;
     dropZone.hidden = true;
     fileName.hidden = false;
     fileName.textContent = label;
     fileName.title = label;
+    openDrawingWorkspace(model, true, identity);
     buildLayerList(model);
-    openDrawingWorkspace(model, true);
     if (viewer.ok) {
       for (const id of ['modeNav', 'modeDraw']) $(id).disabled = false;
       setMode('nav');
@@ -66,6 +66,11 @@
     if (model.warnings.length) say(summary, 'warn', model.warnings);
     else say(summary);
   }
+
+  openDrawingWorkspace.onApplyLayers = () => {
+    buildLayerList(current);
+    if (viewer.ok) viewer.setModel(current, false);
+  };
 
   // One checkbox per layer. Changing visibility rebuilds the geometry but keeps drawing settings.
   function buildLayerList(model) {
@@ -113,7 +118,7 @@
           say(`Reading ${file.name}… ${done} of ${total} objects`)
         );
       } else throw Error('Choose a Rhino .3dm file or an .obj file.');
-      show(model, file.name);
+      show(model, file.name, JSON.stringify([file.name, file.size, file.lastModified]));
     } catch (error) {
       console.error('Import failed', error);
       say(
@@ -132,7 +137,7 @@
     if (busy) return;
     lastFile = null;
     try {
-      show(sampleModel(), 'Sample building');
+      show(sampleModel(), 'Sample building', 'sample');
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');
@@ -140,6 +145,7 @@
   }
 
   // Controls
+  $('openCredits').onclick = () => $('studioCredits').showModal();
   $('modeNav').onclick = () => mode !== 'nav' && setMode('nav');
   $('modeDraw').onclick = () => mode !== 'draw' && setMode('draw');
   $('navToDrawing').onclick = () => setMode('draw', true);

@@ -27,8 +27,17 @@ let rhinoPromise = null;
 function loadRhino() {
   if (!rhinoPromise) {
     rhinoPromise = (async () => {
-      const lib = await import(RHINO_CDN + 'rhino3dm.module.min.js');
-      return await lib.default({ locateFile: (name) => RHINO_CDN + name });
+      async function loadFrom(base) {
+        const lib = await import(base + 'rhino3dm.module.min.js');
+        return lib.default({ locateFile: (name) => base + name });
+      }
+      if (location.protocol === 'file:') return loadFrom(RHINO_CDN);
+      const bundled = new URL('vendor/rhino3dm/', document.baseURI).href;
+      try {
+        return await loadFrom(bundled);
+      } catch {
+        return loadFrom(RHINO_CDN);
+      }
     })();
     rhinoPromise.catch(() => {
       rhinoPromise = null;
@@ -246,7 +255,9 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       layers = [];
     for (let i = 0; i < layerTable.count; i++) {
       const layer = layerTable.get(i);
+      if (!layer) continue;
       layers.push({
+        index: layer.index,
         path: layer.fullPath || layer.name,
         id: layer.id,
         parent: layer.parentLayerId,
@@ -256,6 +267,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       dispose(layer);
     }
     const byId = new Map(layers.map((layer) => [layer.id, layer]));
+    const byIndex = new Map(layers.map((layer) => [layer.index, layer]));
     const layerVisible = (layer) => {
       for (let guard = 0; layer && guard < 32; guard++) {
         if (!layer.visible) return false;
@@ -267,9 +279,68 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
 
     const objects = doc.objects(),
       definitions = doc.instanceDefinitions(),
+      materials = doc.materials(),
       total = objects.count,
       stats = { unmeshed: 0, skipped: new Map(), instances: 0 };
     const skip = (kind) => stats.skipped.set(kind, (stats.skipped.get(kind) || 0) + 1);
+
+    function objectColor(attributes, layer, parentColor) {
+      switch (attributes.colorSource.value) {
+        case r.ObjectColorSource.ColorFromObject.value:
+          return to255(attributes.objectColor);
+        case r.ObjectColorSource.ColorFromParent.value:
+          return parentColor ?? layer?.color;
+        case r.ObjectColorSource.ColorFromMaterial.value: {
+          const material = materials.findFromAttributes(attributes);
+          try {
+            return material ? to255(material.diffuseColor) : layer?.color;
+          } finally {
+            dispose(material);
+          }
+        }
+        default:
+          return layer?.color;
+      }
+    }
+
+    function addRhinoObject(attributes, geometry, matrix, depth, parentColor) {
+      if (!geometry || !attributes.visible) return;
+      const layer = byIndex.get(attributes.layerIndex);
+      if (layer && !layerVisible(layer)) return;
+      const key = layer?.path || 'Default';
+      const color = objectColor(attributes, layer, parentColor);
+      if (geometry.constructor.name === 'InstanceReference') {
+        expandBlock(geometry, matrix, depth, color);
+        return;
+      }
+      const layerIdx = builder.layer(key, layer?.color, true);
+      const record = builder.object(layerIdx, attributes.name || key, color);
+      addGeometry(record, geometry, matrix);
+    }
+
+    function expandBlock(geometry, matrix, depth, color) {
+      if (depth >= 32) return skip('Block (nested too deeply)');
+      stats.instances++;
+      const definition = definitions.findId(geometry.parentIdefId);
+      if (!definition) return skip('Block (missing definition)');
+      const next = multiply(matrix, transformMatrix(geometry.xform));
+      try {
+        for (const id of definition.getObjectIds()) {
+          const member = objects.findId(id);
+          if (!member) continue;
+          const attributes = member.attributes(), shape = member.geometry();
+          try {
+            addRhinoObject(attributes, shape, next, depth + 1, color);
+          } finally {
+            dispose(shape);
+            dispose(attributes);
+            dispose(member);
+          }
+        }
+      } finally {
+        dispose(definition);
+      }
+    }
 
     // Triangulate every face of a Rhino mesh (quads become two triangles).
     function addMesh(record, mesh, matrix) {
@@ -306,7 +377,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
     }
 
     // Draw one piece of geometry. Returns nothing; unsupported types are counted.
-    function addGeometry(record, geometry, matrix, depth) {
+    function addGeometry(record, geometry, matrix) {
       const type = geometry.constructor.name;
       if (type === 'Mesh') return addMesh(record, geometry, matrix);
       if (type === 'Brep') {
@@ -314,7 +385,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
         let missing = false;
         for (let i = 0; i < faces.count; i++) {
           const face = faces.get(i);
-          const mesh = face.getMesh(r.MeshType.Any);
+          const mesh = face.getMesh(r.MeshType.Render) || face.getMesh(r.MeshType.Any);
           if (mesh) addMesh(record, mesh, matrix);
           else missing = true;
           dispose(mesh);
@@ -335,39 +406,17 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
         return;
       }
       if (type === 'Extrusion') {
-        const mesh = geometry.getMesh(r.MeshType.Any);
+        const mesh = geometry.getMesh(r.MeshType.Render) || geometry.getMesh(r.MeshType.Any);
         if (mesh) {
           addMesh(record, mesh, matrix);
           dispose(mesh);
         } else {
           const brep = geometry.toBrep(true);
           if (brep) {
-            addGeometry(record, brep, matrix, depth);
+            addGeometry(record, brep, matrix);
             dispose(brep);
           } else skip('Extrusion');
         }
-        return;
-      }
-      if (type === 'InstanceReference') {
-        if (depth > 4) return skip('Block (nested too deeply)');
-        stats.instances++;
-        const definition = definitions.findId(geometry.parentIdefId);
-        if (!definition) return skip('Block (missing definition)');
-        const xform = geometry.xform,
-          next = multiply(matrix, transformMatrix(xform)),
-          ids = definition.getObjectIds();
-        for (const id of ids) {
-          const member = objects.findId(id);
-          if (!member) continue;
-          const g = member.geometry();
-          try {
-            if (g) addGeometry(record, g, next, depth + 1);
-          } finally {
-            dispose(g);
-            dispose(member);
-          }
-        }
-        dispose(definition);
         return;
       }
       if (/Curve$/.test(type) || type === 'BrepEdge') return addCurve(record, geometry, matrix);
@@ -384,14 +433,8 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
         geometry = object.geometry();
       try {
         // Block definitions are drawn through their instance references, not directly.
-        if (!geometry || attributes.isInstanceDefinitionObject || !attributes.visible) continue;
-        const layer = layers[attributes.layerIndex];
-        if (layer && !layerVisible(layer)) continue;
-        const key = layer ? layer.path : 'Default';
-        const layerIdx = builder.layer(key, layer ? layer.color : undefined, true);
-        const own = attributes.colorSource.value === 1 ? to255(attributes.objectColor) : null;
-        const record = builder.object(layerIdx, attributes.name || key + ' ' + (i + 1), own);
-        addGeometry(record, geometry, identity(), 0);
+        if (attributes.isInstanceDefinitionObject) continue;
+        addRhinoObject(attributes, geometry, identity(), 0);
       } catch (error) {
         console.warn('Skipped a Rhino object', error);
         skip('Unreadable object');
@@ -404,6 +447,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
     progress(total, total);
     dispose(objects);
     dispose(definitions);
+    dispose(materials);
 
     if (stats.unmeshed)
       builder.warn(

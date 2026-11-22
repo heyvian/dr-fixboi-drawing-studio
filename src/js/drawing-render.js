@@ -36,13 +36,13 @@ function renderDrawing(
   scaleChoice,
   seeThrough,
   placement,
-  hybrid,
+  rendering,
   pens,
   region = null,
   frame = null
 ) {
-  const width = region?.width ?? paper.width * DRAWING_PIXELS_PER_INCH,
-    height = region?.height ?? paper.height * DRAWING_PIXELS_PER_INCH,
+  const width = region?.width ?? Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
+    height = region?.height ?? Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
     pixelsPerMillimetre = DRAWING_PIXELS_PER_INCH / 25.4,
     margin = region ? DRAWING_TILE_MARGIN : 10 * pixelsPerMillimetre,
     drawingHeight = height - (region ? DRAWING_TILE_RESERVED_HEIGHT : margin * 3.2);
@@ -93,13 +93,13 @@ function renderDrawing(
     centeredY = margin + drawingHeight / 2 - ((top + bottom) * scale) / 2,
     groundY = margin + drawingHeight - 5 * pixelsPerMillimetre,
     originY =
-      (placement.ground && !frame && Math.abs(Math.cos(camera.el)) > 0.01
+      (placement.ground && Math.abs(Math.cos(camera.el)) > 0.01
         ? groundY - ground * scale
         : centeredY) +
       placement.y * pixelsPerMillimetre,
     projected = raw.map(([x, y, z]) => [originX + x * scale, originY + y * scale, z]),
     depth = new Float32Array(width * height).fill(-Infinity),
-    paint = hybrid ? new ImageData(width, height) : null,
+    paint = rendering !== 'linework' ? new ImageData(width, height) : null,
     sun = unit([-0.4, 1, 0.65]),
     cutLines = [];
   const outline =
@@ -121,7 +121,7 @@ function renderDrawing(
     const polygon = trimDrawingFace(triangle, clips);
     if (polygon.length < 3) continue;
     if (!face.glazing || !seeThrough) {
-      const color = paint && drawingFaceColor(face, sun);
+      const color = paint && drawingFaceColor(face, sun, rendering === 'flat');
       rasterDrawingPolygon(
         depth,
         width,
@@ -347,8 +347,8 @@ function renderDrawing(
     midY: (top + bottom) / 2,
     depth,
     wash,
-    exportFills: hybrid
-      ? () => drawingExportFills(geometry, projected, seeThrough, clips, width, height, sun)
+    exportFills: paint
+      ? () => drawingExportFills(geometry, projected, seeThrough, [...clips, ...sheetEdges], width, height, sun, rendering === 'flat')
       : null,
     width,
     height,

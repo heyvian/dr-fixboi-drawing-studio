@@ -20,9 +20,16 @@ const openDrawingWorkspace = (() => {
     footer = document.createElementNS(svgNS, 'g'),
     footerRule = document.createElementNS(svgNS, 'line'),
     footerTitle = document.createElementNS(svgNS, 'text'),
+    footerIdentification = document.createElementNS(svgNS, 'text'),
     footerScale = document.createElementNS(svgNS, 'g'),
     pageStyle = document.createElement('style'),
-    paperSizes = { letter: [8.5, 11], tabloid: [11, 17] },
+    paperSizes = {
+      letter: [8.5, 11],
+      tabloid: [11, 17],
+      a4: [210 / 25.4, 297 / 25.4],
+      a3: [297 / 25.4, 420 / 25.4],
+      a2: [420 / 25.4, 594 / 25.4]
+    },
     compassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
     compassNames = [
       'north',
@@ -35,11 +42,10 @@ const openDrawingWorkspace = (() => {
       'northwest'
     ],
     viewNames = ['axo', 'plan', 'elevation', 'nav', 'aligned'];
-  footer.setAttribute('fill', '#243c30');
-  footer.setAttribute('font-family', 'system-ui, sans-serif');
+  footer.setAttribute('font-family', 'Arial, sans-serif');
   footer.setAttribute('font-size', '11');
-  footerRule.setAttribute('stroke', '#8ba095');
-  footer.append(footerRule, footerTitle, footerScale);
+  footerIdentification.setAttribute('font-size', '9');
+  footer.append(footerRule, footerTitle, footerIdentification, footerScale);
   clip.id = 'drawingSheetClip';
   clip.append(clipRect);
   drawingArea.setAttribute('clip-path', 'url(#drawingSheetClip)');
@@ -56,6 +62,7 @@ const openDrawingWorkspace = (() => {
 
   let settings = {
       view: 'axo',
+      orbitLocked: true,
       azimuth: 5,
       elevation: 225,
       storey: 3.5,
@@ -72,6 +79,8 @@ const openDrawingWorkspace = (() => {
       placement: { x: 0, y: 0, ground: false }
     },
     sourceModel = null,
+    modelIdentity = null,
+    savedViews = [],
     base = null, // the 3D view snapshot the "From 3D view" drawing is framed from
     geometry = null,
     rendered = null,
@@ -99,7 +108,7 @@ const openDrawingWorkspace = (() => {
         paper: Object.hasOwn(paperSizes, saved.paper) ? saved.paper : 'letter',
         orientation: saved.orientation === 'portrait' ? 'portrait' : 'landscape',
         scale: DRAWING_SCALES.includes(Number(saved.scale)) ? saved.scale : 'auto',
-        mode: ['linework', 'color'].includes(saved.mode)
+        mode: ['linework', 'color', 'flat'].includes(saved.mode)
           ? saved.mode
           : 'linework',
         placement: {
@@ -124,6 +133,110 @@ const openDrawingWorkspace = (() => {
     // Drawing controls remain available when the browser blocks local storage.
   }
 
+  const exportPaper = $('exportPaper'), exportAnnotations = $('exportAnnotations'), exportPaths = $('exportPaths');
+  const exportStorageKey = storageKey + '-export';
+  try {
+    const preferences = JSON.parse(localStorage.getItem(exportStorageKey));
+    exportPaper.checked = preferences?.paper !== false;
+    exportAnnotations.checked = preferences?.annotations !== false;
+    exportPaths.value = preferences?.paths === 'individual' ? 'individual' : 'batch';
+  } catch {
+    // The defaults are already set in the controls.
+  }
+  for (const control of [exportPaper, exportAnnotations, exportPaths]) {
+    control.onchange = () => {
+      try {
+        localStorage.setItem(exportStorageKey, JSON.stringify({
+          paper: exportPaper.checked,
+          annotations: exportAnnotations.checked,
+          paths: exportPaths.value
+        }));
+      } catch {
+        // Export still uses the current controls.
+      }
+    };
+  }
+
+  const viewPicker = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus');
+  const viewsStorageKey = () => storageKey + '-views-' + modelIdentity;
+  const activeStorageKey = () => storageKey + '-active-' + modelIdentity;
+  const titleFields = [$('drawingTitle'), $('drawingNumber'), $('drawingRevision')];
+  function currentSnapshot() {
+    return {
+      settings,
+      base,
+      titles: titleFields.map((field) => field.value),
+      hiddenLayers: sourceModel.layers.filter((layer) => !layer.visible).map((layer) => layer.key)
+    };
+  }
+  function restoreSnapshot(snapshot) {
+    base = structuredClone(snapshot.base);
+    // Sheets saved before the projection toolbar used independent compass directions.
+    settings = { orbitLocked: false, ...structuredClone(snapshot.settings), pens: drawingPens(snapshot.settings.pens) };
+    titleFields.forEach((field, i) => { field.value = snapshot.titles?.[i] ?? ''; });
+    const hidden = new Set(snapshot.hiddenLayers);
+    for (const layer of sourceModel.layers) layer.visible = !hidden.has(layer.key);
+  }
+  function refreshSavedViews(selection = '') {
+    viewPicker.replaceChildren(
+      new Option(savedViews.length ? 'Select a saved view' : 'No saved views', ''),
+      ...savedViews.map(({ name }) => new Option(name, name))
+    );
+    viewPicker.value = selection;
+    $('recallView').disabled = $('deleteView').disabled = !viewPicker.value;
+  }
+  function savedViewMessage(message) {
+    viewStatus.textContent = message;
+    viewStatus.hidden = !message;
+  }
+  function persistViews(nextViews, selection, message) {
+    savedViews = nextViews;
+    refreshSavedViews(selection);
+    try {
+      localStorage.setItem(viewsStorageKey(), JSON.stringify(savedViews));
+      savedViewMessage(message);
+    } catch {
+      savedViewMessage('Browser storage is unavailable. Changes apply to this session only.');
+    }
+  }
+  viewPicker.onchange = () => {
+    viewName.value = viewPicker.value;
+    $('recallView').disabled = $('deleteView').disabled = !viewPicker.value;
+    savedViewMessage('');
+  };
+  $('saveView').onclick = () => {
+    const name = viewName.value.trim();
+    if (!name) {
+      savedViewMessage('Enter a name for this view.');
+      viewName.focus();
+      return;
+    }
+    const snapshot = { name, ...structuredClone(currentSnapshot()) };
+    const next = savedViews.slice();
+    const index = next.findIndex((view) => view.name === name);
+    if (index < 0) next.push(snapshot);
+    else next[index] = snapshot;
+    persistViews(next, name, `Saved “${name}”.`);
+  };
+  $('recallView').onclick = () => {
+    const snapshot = savedViews.find(({ name }) => name === viewPicker.value);
+    if (!snapshot) return;
+    stopPlacing();
+    restoreSnapshot(snapshot);
+    load.onApplyLayers?.();
+    geometry = null;
+    clampPlanes();
+    syncSettings();
+    queueDrawing();
+    savedViewMessage(`Recalled “${snapshot.name}”.`);
+  };
+  $('deleteView').onclick = () => {
+    const name = viewPicker.value;
+    if (!name) return;
+    viewName.value = '';
+    persistViews(savedViews.filter((view) => view.name !== name), '', `Deleted “${name}”.`);
+  };
+
   // Storeys are measured up from the model's lowest point at the user's storey height.
   const floorCount = () => clamp(Math.ceil(sourceModel.height / settings.storey - 1e-6), 1, 60);
   const currentPlane = () => settings.planes.find((plane) => plane.id === settings.selected);
@@ -135,7 +248,8 @@ const openDrawingWorkspace = (() => {
   }
   function resizePaperPreview() {
     const { width, height } = paperDimensions(),
-      previewScale = Math.min(paperFrame.clientWidth / width, paperFrame.clientHeight / height);
+      inset = Number.parseFloat(getComputedStyle(paperFrame).getPropertyValue('--preview-inset')) || 0,
+      previewScale = Math.min((paperFrame.clientWidth - inset * 2) / width, (paperFrame.clientHeight - inset * 2) / height);
     if (previewScale > 0) {
       sheet.style.width = width * previewScale + 'px';
       sheet.style.height = height * previewScale + 'px';
@@ -146,6 +260,7 @@ const openDrawingWorkspace = (() => {
   function saveDrawing() {
     try {
       localStorage.setItem(storageKey, JSON.stringify(settings));
+      if (modelIdentity && sourceModel) localStorage.setItem(activeStorageKey(), JSON.stringify(currentSnapshot()));
     } catch {
       // Export is independent of local storage.
     }
@@ -168,21 +283,26 @@ const openDrawingWorkspace = (() => {
         ]
       : [-reach, reach];
   }
+  const lockedOrbit = () => settings.orbitLocked ? base : null;
   function viewCamera() {
     const top = Math.PI / 2 - 1e-7;
-    if (settings.view === 'plan') return { az: -Math.PI / 2, el: top };
+    const orbit = lockedOrbit();
+    if (settings.view === 'plan') return { az: orbit?.az ?? -Math.PI / 2, el: top };
     if (settings.view === 'nav' && base) return { az: base.az, el: base.el };
     if (settings.view === 'elevation')
-      return { az: Math.PI / 2 + (settings.elevation * Math.PI) / 180, el: 0 };
+      return { az: orbit?.az ?? (Math.PI / 2 + (settings.elevation * Math.PI) / 180), el: 0 };
     const plane = currentPlane();
     if (settings.view === 'aligned' && plane) {
       if (plane.axis === 'horizontal') return { az: -Math.PI / 2, el: plane.flip ? -top : top };
       return { az: (plane.angle * Math.PI) / 180 + (plane.flip ? Math.PI : 0), el: 0 };
     }
     // Plan north is world +Z. Moving clockwise on the compass follows the plan axes.
-    return { az: Math.PI / 2 + (settings.azimuth * Math.PI) / 4, el: 0.57 };
+    return { az: orbit?.az ?? (Math.PI / 2 + (settings.azimuth * Math.PI) / 4), el: 0.57 };
   }
   const compass = $('drawingCompass');
+  const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
+  for (const button of sheetViewButtons)
+    button.onclick = () => selectSheetView(button.dataset.sheetView, true);
   for (const index of [7, 0, 1, 6, 2, 5, 4, 3]) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -199,8 +319,17 @@ const openDrawingWorkspace = (() => {
   }
   function syncCompass() {
     const elevation = settings.view === 'elevation';
-    compass.hidden = settings.view !== 'axo' && !elevation;
-    $('drawingOrbitField').hidden = !elevation;
+    compass.hidden = Boolean(lockedOrbit()) || (settings.view !== 'axo' && !elevation);
+    $('drawingOrbitField').hidden = Boolean(lockedOrbit()) || !elevation;
+    const viewPicker = $('drawingView');
+    viewPicker.value = settings.view;
+    $('useNavView').disabled = !viewer.ok;
+    for (const button of sheetViewButtons) {
+      const view = button.dataset.sheetView;
+      button.disabled = (view === 'nav' && !base) || (view === 'aligned' && !currentPlane());
+      viewPicker.querySelector(`[value="${view}"]`).disabled = button.disabled;
+      button.setAttribute('aria-pressed', String(view === settings.view));
+    }
     $('drawingOrbit').value = settings.elevation;
     $('drawingOrbitAngle').textContent = settings.elevation + '°';
     for (const button of compass.children)
@@ -388,12 +517,14 @@ const openDrawingWorkspace = (() => {
         if (identified && i === firstInk && pressure === named) linework.id = 'drawingLinework';
         layer.append(linework);
       }
-      if (i === heaviest) {
+      layers.push(layer);
+      if (i === heaviest && section) {
+        const cuts = markSvgLayer(svgElement('g', { 'data-weight-mm': width }), 'Section cuts');
         const cut = path(section, width, stroke);
         if (identified) cut.id = 'drawingSections';
-        layer.append(cut);
+        cuts.append(cut);
+        layers.push(cuts);
       }
-      layers.push(layer);
     }
     for (const [name, strokes] of [
       ['Component outlines', frame.componentInk],
@@ -445,8 +576,8 @@ const openDrawingWorkspace = (() => {
   }
 
   function renderFloorSheet(paper, camera) {
-    const width = paper.width * DRAWING_PIXELS_PER_INCH,
-      height = paper.height * DRAWING_PIXELS_PER_INCH,
+    const width = Math.round(paper.width * DRAWING_PIXELS_PER_INCH),
+      height = Math.round(paper.height * DRAWING_PIXELS_PER_INCH),
       margin = (10 * DRAWING_PIXELS_PER_INCH) / 25.4,
       drawingHeight = height - margin * 3.2;
     const plans = floorPlans(),
@@ -481,7 +612,7 @@ const openDrawingWorkspace = (() => {
         denominator,
         settings.glazing,
         { x: 0, y: 0, ground: false },
-        settings.mode !== 'linework',
+        settings.mode,
         settings.pens,
         region
       );
@@ -520,8 +651,12 @@ const openDrawingWorkspace = (() => {
         geometry = drawingGeometry(sourceModel.assemble(), sourceModel);
       }
       const camera = viewCamera(),
-        fromNav = settings.view === 'nav' && base;
-      $('groundDrawing').disabled = Math.abs(Math.cos(camera.el)) <= 0.01 || Boolean(fromNav);
+        framing = settings.view === 'nav' ? base : settings.view === 'aligned' ? null : lockedOrbit();
+      const groundButton = $('groundDrawing');
+      groundButton.disabled = Math.abs(Math.cos(camera.el)) <= 0.01;
+      groundButton.title = groundButton.disabled
+        ? 'Ground alignment is available in elevations and axonometrics.'
+        : 'Align ground 5 mm above the bottom drawing margin';
       if (!allPlans()) floorTiles.replaceChildren();
       rendered = allPlans()
         ? renderFloorSheet(paper, camera)
@@ -533,10 +668,10 @@ const openDrawingWorkspace = (() => {
             settings.scale,
             settings.glazing,
             settings.placement,
-            settings.mode !== 'linework',
+            settings.mode,
             settings.pens,
             null,
-            fromNav ? base : null
+            framing
           );
       const { width, height, margin, denominator } = rendered,
         ruleY = height - margin * 1.8,
@@ -548,24 +683,33 @@ const openDrawingWorkspace = (() => {
               ? 'Section'
               : 'Plan section'
             : $('drawingView').selectedOptions[0].text;
-      sheet.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      // Keep SVG coordinates tied to the exact physical paper size. Only raster buffers round to pixels.
+      const pageWidth = paper.width * DRAWING_PIXELS_PER_INCH,
+        pageHeight = paper.height * DRAWING_PIXELS_PER_INCH;
+      sheet.setAttribute('viewBox', `0 0 ${pageWidth} ${pageHeight}`);
       clipRect.setAttribute('x', margin);
       clipRect.setAttribute('y', margin);
       clipRect.setAttribute('width', width - margin * 2);
       clipRect.setAttribute('height', rendered.drawingHeight);
       content.removeAttribute('transform');
-      paperLayer.replaceChildren(svgElement('rect', { width, height, fill: settings.pens.paper }));
+      paperLayer.replaceChildren(svgElement('rect', { width: pageWidth, height: pageHeight, fill: settings.pens.paper }));
       if (allPlans()) sheetArtwork.replaceChildren();
       else renderPens(sheetArtwork, rendered, true);
       footerRule.setAttribute('x1', margin);
       const sheetText = sheetInk(settings.pens.paper);
       footer.setAttribute('fill', sheetText);
+      footerRule.setAttribute('stroke', sheetText);
+      footerRule.setAttribute('opacity', '0.45');
       footerRule.setAttribute('x2', width - margin);
       footerRule.setAttribute('y1', ruleY);
       footerRule.setAttribute('y2', ruleY);
       footerTitle.setAttribute('x', margin);
       footerTitle.setAttribute('y', textY);
       footerTitle.textContent = sheetTitle() + ' \u00b7 ' + viewLabel;
+      footerIdentification.setAttribute('x', margin);
+      footerIdentification.setAttribute('y', textY + 13);
+      const [number, revision] = titleFields.slice(1).map((field) => field.value.trim());
+      footerIdentification.textContent = [number, revision && `REV ${revision}`].filter(Boolean).join(' · ');
       // Elevations and upright sections have an edge-on plan. Their footer only needs the scale.
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
@@ -583,8 +727,6 @@ const openDrawingWorkspace = (() => {
   function showStatus() {
     status.textContent = placing
       ? 'Click the drawing to place the selected plane.'
-      : settings.view === 'nav' && !allPlans() && !exportButton.disabled
-        ? 'Drawn from your 3D view. Drag to nudge it on the sheet; the 3D view is not affected.'
       : rendered?.cropped
         ? allPlans()
           ? 'Some plans extend past their panels. Use Fit to scale the set.'
@@ -593,7 +735,9 @@ const openDrawingWorkspace = (() => {
           ? 'The planes clip all the visible geometry.'
           : allPlans()
             ? 'Floor plans share a drawing scale.'
-            : 'Drag the drawing or use the arrow keys to reposition it.';
+            : base && (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
+              ? 'Using the captured 3D orbit. Drag the drawing or use the arrow keys to pan the sheet.'
+              : 'Drag the drawing or use the arrow keys to reposition it.';
   }
   function queueDrawing() {
     saveDrawing();
@@ -853,11 +997,15 @@ const openDrawingWorkspace = (() => {
     syncOffset(plane);
   }
 
-  $('drawingView').onchange = (event) => {
-    settings.view = event.target.value;
+  function selectSheetView(view, lockOrbit = settings.orbitLocked) {
+    if (settings.view === view && settings.orbitLocked === lockOrbit) return;
+    settings.view = view;
+    settings.orbitLocked = lockOrbit;
+    stopPlacing();
     syncCompass();
     queueDrawing();
-  };
+  }
+  $('drawingView').onchange = (event) => selectSheetView(event.target.value);
   $('drawingOrbit').oninput = (event) => {
     settings.elevation = event.target.valueAsNumber;
     syncCompass();
@@ -877,7 +1025,7 @@ const openDrawingWorkspace = (() => {
     geometry = null;
     queueDrawing();
   };
-  $('drawingTitle').oninput = queueDrawing;
+  for (const field of titleFields) field.oninput = queueDrawing;
   $('drawingPlanSheet').onchange = (event) => {
     settings.planSheet = event.target.value;
     stopPlacing();
@@ -1086,15 +1234,15 @@ const openDrawingWorkspace = (() => {
     movePlane(offset - floorDatum(currentPlane()));
   });
 
-  function exportArtwork(item, target) {
+  function exportArtwork(item, target, chunkSize, crop) {
     if (item.localName === 'path') {
       // The renderer packs disconnected strokes into each path. Bound the number of subpaths per
       // object so large sheets remain practical to select and edit in a vector application.
-      const strokes = item.getAttribute('d').match(/M[^M]+/g) || [];
-      for (let first = 0; first < strokes.length; first += 256) {
+      const strokes = drawingExportStrokes(item.getAttribute('d'), crop, Number(item.getAttribute('stroke-width')) || 0);
+      for (let first = 0; first < strokes.length; first += chunkSize) {
         const path = item.cloneNode(false);
         path.removeAttribute('id');
-        path.setAttribute('d', strokes.slice(first, first + 256).join(''));
+        path.setAttribute('d', strokes.slice(first, first + chunkSize).join(''));
         target.append(path);
       }
       return;
@@ -1105,37 +1253,38 @@ const openDrawingWorkspace = (() => {
   function vectorDrawingSheet() {
     const { width, height } = paperDimensions();
     const root = svgElement('svg', {
+      version: '1.1',
       width: width + 'in',
       height: height + 'in',
       viewBox: sheet.getAttribute('viewBox')
     });
+    const chunkSize = exportPaths.value === 'individual' ? 1 : 256;
     const title = svgElement('title', {}),
-      defs = svgElement('defs', {}),
       layers = new Map();
     title.textContent = `${footerTitle.textContent} · 1:${rendered.denominator}`;
     root.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:inkscape', layerNS);
-    root.append(title, defs, paperLayer.cloneNode(true));
+    root.setAttribute('data-poly-nation-export', '2');
+    root.append(title);
+    if (exportPaper.checked) root.append(paperLayer.cloneNode(true));
 
-    // Expose the paper, each pen and the other treatments at the root. Each group carries its own
-    // crop so Illustrator can lift it into a layer without changing its appearance or position.
+    // SVG groups contain geometrically cropped artwork so Illustrator needs no clipping masks.
     function addRegion(source, crop, placement, number, makeFills) {
-      const id = `Sheet_crop_${number + 1}`,
-        boundary = svgElement('clipPath', { id });
-      boundary.append(crop);
-      defs.append(boundary);
       for (const template of source.children) {
         const previewWash = template.dataset.layer === 'Colour wash',
           name = previewWash ? 'Colour fills' : template.dataset.layer;
         if (!layers.has(name)) layers.set(name, markSvgLayer(template.cloneNode(false), name));
-        const part = svgElement('g', { 'clip-path': `url(#${id})` });
-        if (placement) part.setAttribute('transform', placement);
+        const part = svgElement('g', {});
+        if (placement) {
+          part.setAttribute('transform', placement);
+          part.setAttribute('data-floor', number + 1);
+        }
         if (previewWash) {
           for (const { fill, d } of makeFills?.() || []) {
             const id = `Fill_${number + 1}_${fill.slice(1)}`;
             part.append(svgElement('path', { id, fill, d }));
           }
         } else {
-          for (const item of template.children) exportArtwork(item, part);
+          for (const item of template.children) exportArtwork(item, part, chunkSize, crop);
         }
         if (part.hasChildNodes()) layers.get(name).append(part);
       }
@@ -1143,7 +1292,7 @@ const openDrawingWorkspace = (() => {
 
     const labels = markSvgLayer(svgElement('g', {}), 'Floor labels');
     if (allPlans()) {
-      // The preview uses nested SVG viewports. Reapply their crops in each exported pen layer.
+      // Keep each floor in its own positioned group inside each exported pen layer.
       [...floorTiles.children].forEach((tile, i) => {
         const [area, label] = tile.children,
           x = tile.getAttribute('x'),
@@ -1155,12 +1304,15 @@ const openDrawingWorkspace = (() => {
         addRegion(area, crop, placement, i, rendered.regionFills[i]);
         const caption = label.cloneNode(true);
         caption.setAttribute('transform', placement);
-        labels.append(caption);
+        if (exportAnnotations.checked) labels.append(caption);
       });
     } else addRegion(sheetArtwork, clipRect.cloneNode(true), null, 0, rendered.exportFills);
 
     root.append(...[...layers.values(), labels].filter((layer) => layer.hasChildNodes()));
-    root.append(footer.cloneNode(true));
+    if (exportAnnotations.checked) {
+      root.append(footer.cloneNode(true));
+      outlineDrawingLabels(root);
+    }
     // The ASCII IDs survive import in editors that ignore the readable Inkscape layer labels.
     [...root.children]
       .filter((node) => node.localName === 'g')
@@ -1168,6 +1320,9 @@ const openDrawingWorkspace = (() => {
         const order = String(i + 1).padStart(2, '0'),
           name = layer.dataset.layer.replace(/ · /g, ' ').replace(/\./g, 'p').replace(/ /g, '_');
         layer.id = `PN_${order}_${name}`;
+        [...layer.querySelectorAll('[data-floor]')].forEach((region) => {
+          region.id = `${layer.id}_floor_${region.dataset.floor}`.replace(/^PN_/, 'Floor_');
+        });
       });
     return root;
   }
@@ -1208,7 +1363,7 @@ const openDrawingWorkspace = (() => {
           scale,
           glazing,
           { x: 0, y: 0, ground: false },
-          mode !== 'linework',
+          mode,
           pens
         );
         const page = floorView(frame, sheetTitle() + ' \u00b7 ' + label, 0, 0, true);
@@ -1262,11 +1417,33 @@ const openDrawingWorkspace = (() => {
   }
 
   // Called by the app with each imported (or re-filtered) model. 'fresh' marks a different file.
-  function load(model, fresh = true) {
+  function load(model, fresh = true, identity) {
     sourceModel = model;
     geometry = null;
     if (fresh) {
-      $('drawingTitle').value = model.name;
+      if (identity !== modelIdentity) {
+        modelIdentity = identity;
+        base = null;
+        try {
+          const saved = JSON.parse(localStorage.getItem(viewsStorageKey()));
+          savedViews = Array.isArray(saved)
+            ? saved.filter((view) => typeof view?.name === 'string' && Array.isArray(view.settings?.planes))
+            : [];
+        } catch {
+          savedViews = [];
+        }
+        viewName.value = '';
+        savedViewMessage('');
+        refreshSavedViews();
+      }
+      titleFields[0].value = model.name;
+      titleFields[1].value = titleFields[2].value = '';
+      try {
+        const working = JSON.parse(localStorage.getItem(activeStorageKey()));
+        if (Array.isArray(working?.settings?.planes)) restoreSnapshot(working);
+      } catch {
+        // A missing or unreadable working sheet starts with the current preferences.
+      }
       for (const [key, [, portion]] of Object.entries(DRAWING_COMPONENTS))
         if (!Number.isInteger(settings.pens.components[key]))
           settings.pens.components[key] = Math.round((settings.pens.widths.length - 1) * portion);
@@ -1281,9 +1458,10 @@ const openDrawingWorkspace = (() => {
   // Remember a 3D view as the drawing's base. 'select' also switches the drawing to it and clears any
   // sheet nudging, so the drawing starts exactly where the 3D view was left.
   function setBase(snapshot, select) {
-    base = snapshot;
+    if (select || !base) base = snapshot;
     if (select) {
       settings.view = 'nav';
+      settings.orbitLocked = true;
       settings.placement = { x: 0, y: 0, ground: false };
       stopPlacing();
     }
