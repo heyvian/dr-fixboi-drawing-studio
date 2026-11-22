@@ -160,21 +160,25 @@
       $('navCreaseOut').textContent = `${event.target.value}°`;
       viewer.setLines({ creaseAngle: Number(event.target.value) });
     };
-    // Axo compass: eight buttons for the direction the axonometric is viewed from.
-    const axoButtons = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].map((label, index) => {
-      const button = Object.assign(document.createElement('button'), { type: 'button', textContent: label });
-      button.title = `Axonometric viewed from the ${label}`;
-      button.onclick = () => viewer.axo(index);
-      $('navAxoCompass').append(button);
-      return button;
+    const showHeading = createViewCompass($('navAxoCompass'), (heading) => {
+      if (viewer.activeAxo !== null) viewer.axo(heading / 45);
+      else if (viewer.snapshot().el > Math.PI / 2 - 0.001) viewer.plan(heading);
+      else viewer.elevation(heading);
     });
-    const syncAxo = () => {
-      axoButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(viewer.activeAxo === index)));
-      // The compass only matters while the view is an axonometric
-      $('navAxoGroup').hidden = viewer.activeAxo === null;
+    const syncNavCompass = () => {
+      const { az, el } = viewer.snapshot();
+      const axo = viewer.activeAxo !== null;
+      const elevation = el === 0 && !axo;
+      const plan = el > Math.PI / 2 - 0.001 && !axo;
+      $('navAxoGroup').hidden = !axo && !elevation && !plan;
+      $('navAxoCompass').setAttribute('aria-label', plan ? '3D plan orientation compass' : '3D view direction compass');
+      showHeading(compassHeading(az + (plan ? Math.PI : 0)), plan);
+      document.querySelector('#navStage [data-view="iso"]').setAttribute('aria-pressed', String(axo));
+      document.querySelector('#navStage [data-view="elevation"]').setAttribute('aria-pressed', String(elevation));
+      document.querySelector('#navStage [data-view="top"]').setAttribute('aria-pressed', String(plan));
     };
-    viewer.onMove = syncAxo;
-    syncAxo();
+    viewer.onMove = syncNavCompass;
+    syncNavCompass();
     const setFocus = $('navSetFocus');
     viewer.onPick = () => setFocus.setAttribute('aria-pressed', 'false');
     setFocus.onclick = () => {

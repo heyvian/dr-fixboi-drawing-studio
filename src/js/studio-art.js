@@ -93,15 +93,27 @@
       }
       ctx.restore();
     }
-    const x = between(470, 715), y = between(330, 500), angle = between(-0.68, -0.24);
-    const inset = (a, b) => [
-      x + a * Math.cos(angle) - b * Math.sin(angle),
-      y + a * Math.sin(angle) + b * Math.cos(angle)
+    // Use a different structure for each family: sloping plates, uprights,
+    // intersecting diagonals, or a loose fan.
+    const compositions = [
+      { x: 675, y: 490, angle: -0.55, spread: 0.11, count: 15, spacing: 29 },
+      { x: 790, y: 520, angle: -1.26, spread: 0.23, count: 10, spacing: 39 },
+      { x: 560, y: 315, angle: 0.30, spread: 0.64, count: 12, spacing: 38 },
+      { x: 660, y: 410, angle: -0.19, spread: 1.08, count: 9, spacing: 42 }
     ];
+    const layout = compositions[(seed >>> 6) % compositions.length];
+    const x = layout.x + between(-90, 90), y = layout.y + between(-85, 85);
+    const angle = layout.angle + between(-0.14, 0.14);
+    const projection = (heading) => (a, b) => [
+      x + a * Math.cos(heading) - b * Math.sin(heading),
+      y + a * Math.sin(heading) + b * Math.cos(heading)
+    ];
+    const inset = projection(angle);
 
     // Separate fields for survey orbits, translucent colour and directional construction lines.
     ctx.strokeStyle = palette.guides;
-    for (let i = 0; i < 30; i++) {
+    const orbitCount = Math.floor(between(16, 39));
+    for (let i = 0; i < orbitCount; i++) {
       const radius = between(38, 410), rotation = between(-0.9, 0.55), start = between(-3, 3);
       ctx.globalAlpha = between(0.12, 0.65);
       ctx.lineWidth = i % 5 === 0 ? 1.35 : 0.65;
@@ -151,13 +163,14 @@
     ctx = foregroundContext;
 
     // Stepped, intersecting plates with clipped hatching and projected edges.
-    const plates = Math.floor(between(9, 16));
+    const plates = layout.count + Math.floor(between(-2, 3));
     for (let i = 0; i < plates; i++) {
-      const a = between(-280, 105), b = (i - (plates - 1) / 2) * 31 + between(-24, 24);
+      const project = projection(angle + between(-layout.spread, layout.spread));
+      const a = between(-280, 105), b = (i - (plates - 1) / 2) * layout.spacing + between(-24, 24);
       const length = between(150, 410), depth = between(17, 67);
       const tip = between(20, 86), taper = between(8, 74);
-      const points = [inset(a - tip, b + depth * 0.28), inset(a + length, b),
-        inset(a + length - taper, b + depth), inset(a + 34, b + depth * 1.36)];
+      const points = [project(a - tip, b + depth * 0.28), project(a + length, b),
+        project(a + length - taper, b + depth), project(a + 34, b + depth * 1.36)];
       trace(points, true);
       const wash = ctx.createLinearGradient(...points[0], ...points[1]);
       wash.addColorStop(0, palette.faces[(i + 3) % palette.faces.length] + '44');
@@ -175,14 +188,14 @@
       ctx.lineWidth = 0.7;
       ctx.globalAlpha = i % 3 ? 0.34 : 0.62;
       for (let h = -360; h < 520; h += 6)
-        line(inset(h, b - 45), inset(h + 106, b + depth * 2 + 45));
+        line(project(h, b - 45), project(h + 106, b + depth * 2 + 45));
       if (i % 3 === 0) {
         ctx.globalAlpha *= 0.65;
         for (let h = -360; h < 580; h += 11)
-          line(inset(h, b - 45), inset(h - 114, b + depth * 2 + 45));
+          line(project(h, b - 45), project(h - 114, b + depth * 2 + 45));
       }
       ctx.restore();
-      const edge = [points[1], points[2], inset(a + length - taper, b + depth + 6), inset(a + length + 1, b + 6)];
+      const edge = [points[1], points[2], project(a + length - taper, b + depth + 6), project(a + length + 1, b + 6)];
       trace(edge, true);
       ctx.globalAlpha = 0.75;
       ctx.fillStyle = palette.ink;
@@ -214,6 +227,21 @@
   draw(landing, chalk, fragments);
   if (draw(studio, graphite))
     document.documentElement.style.setProperty('--studio-plot', `url("${studio.toDataURL()}")`);
+  const paper = document.createElement('canvas');
+  paper.width = paper.height = 128;
+  const paperContext = paper.getContext('2d');
+  if (paperContext) {
+    let grainSeed = seed;
+    const grain = paperContext.createImageData(paper.width, paper.height);
+    for (let i = 0; i < grain.data.length; i += 4) {
+      grainSeed = (Math.imul(grainSeed, 1664525) + 1013904223) >>> 0;
+      const shade = grainSeed >>> 31 ? 255 : 0;
+      grain.data[i] = grain.data[i + 1] = grain.data[i + 2] = shade;
+      grain.data[i + 3] = (grainSeed >>> 26) % 22;
+    }
+    paperContext.putImageData(grain, 0, 0);
+    document.documentElement.style.setProperty('--paper-grain', `url("${paper.toDataURL()}")`);
+  }
 
   const dropZone = landing.closest('.drop-zone');
   const canMove = matchMedia('(prefers-reduced-motion: no-preference) and (any-pointer: fine)');
@@ -234,6 +262,5 @@
   const direction = directions[seed % directions.length];
   const sampleImage = document.querySelector('#sampleSheetImage');
   sampleImage.src = 'src/assets/sample-sheets/axonometric-' + direction.toLowerCase() + '.svg';
-  sampleImage.alt = direction + ' axonometric drawing of The Valentine';
-  document.querySelector('#sampleSheetView').textContent = direction + ' axonometric';
+  sampleImage.alt = direction + ' axonometric drawing of The Optics Building';
 })();

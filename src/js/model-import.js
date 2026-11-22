@@ -500,9 +500,9 @@ function importObj(text, name, unitChoice = 'auto') {
 
 // --- Sample -----------------------------------------------------------------------------------
 
-// The Valentine envelope comes from the supplied val.obj, converted from Y-up to Rhino Z-up.
+// The sample envelope comes from the supplied val.obj, converted from Y-up to Rhino Z-up.
 function sampleModel() {
-  const builder = new ModelBuilder('The Valentine'),
+  const builder = new ModelBuilder('The Optics Building'),
     outline = [
       [14.57430, 14.99205],
       [-13.51675, -12.22460],
@@ -535,7 +535,13 @@ function sampleModel() {
     core = builder.layer('Core', [0.73, 0.63, 0.55]),
     glazing = builder.layer('Glazing', [0.56, 0.73, 0.79]),
     mullions = builder.layer('Façade mullions', [0.35, 0.42, 0.44]),
-    roof = builder.layer('Roof', [0.44, 0.49, 0.47]);
+    roof = builder.layer('Roof', [0.44, 0.49, 0.47]),
+    studioLayers = {
+      furniture: builder.layer('Studio furniture', [0.71, 0.59, 0.45]),
+      students: builder.layer('Dozing students', [0.55, 0.42, 0.61]),
+      clutter: builder.layer('Paper, cans and study models', [0.87, 0.83, 0.69]),
+      recycling: builder.layer('Recycling', [0.34, 0.61, 0.50])
+    };
 
   const at = (index, z) => [...outline[index], z];
   function plate(layer, name, bottom, top) {
@@ -570,11 +576,119 @@ function sampleModel() {
         builder.seg(frames, [...post, sill], [...post, head]);
       }
     }
+    addSampleStudio(builder, studioLayers, outline, level, sill, label);
   }
   plate(roof, 'Roof', envelopeHeight - slabDepth, envelopeHeight);
-  builder.warn('Calgary’s former Nexen Building. The supplied shell is shown with approximate floors, core and façade divisions.');
+  builder.warn('Concept sample with approximate floors, façade divisions and fictional studios.');
   const model = builder.finish();
   model.defaultStoreyHeight = storeyHeight;
   model.initialAxonometric = 0;
   return registerComponents(model);
+}
+
+function addSampleStudio(builder, layers, outline, level, z, label) {
+  let seed = Math.imul(level + 1, 0x9e3779b1);
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 2 ** 32;
+  };
+  const inside = (x, y) => {
+    let inside = false;
+    for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+      const [ax, ay] = outline[i], [bx, by] = outline[j];
+      if ((ay > y) !== (by > y) && x < ax + (bx - ax) * (y - ay) / (by - ay)) inside = !inside;
+    }
+    return inside;
+  };
+  const paper = builder.object(layers.clutter, label + ' loose sheets', [0.94, 0.92, 0.83]);
+  const cans = builder.object(layers.clutter, label + ' energy drinks', [0.70, 0.80, 0.31]);
+  const models = builder.object(layers.clutter, label + ' study models', [0.89, 0.62, 0.37]);
+  const furniture = builder.object(layers.furniture, label + ' desks and chairs');
+  const students = builder.object(layers.students, label + ' students');
+  const bins = builder.object(layers.recycling, label + ' recycling bins');
+
+  // Keep the desks in the three wings and leave a clear path around the core.
+  const stations = [
+    [-8, -9], [-4, -8], [-3, -11], [0, -9], [0, -3], [3, -2], [4, -5], [5, -9],
+    [6, 0], [7, 4], [10, 6], [12, 9], [16, 5], [16, 8], [20, 4], [20, 8], [20, 11],
+    [24, 2], [24, 6], [25, 10], [29, 0], [29, 4], [30, 8], [33, 10]
+  ];
+  for (const [sx, sy] of stations) {
+    const x = sx + (random() - 0.5) * 0.8, y = sy + (random() - 0.5) * 0.8;
+    if (random() < 0.24 || ![-1.15, 1.15].every(dx => [-1.15, 1.15].every(dy => inside(x + dx, y + dy))))
+      continue;
+    const turn = random() < 0.5 ? 1 : -1;
+    const point = (u, v, height) => [x + turn * u, y + turn * v, z + height];
+    const box = (object, a, b) => {
+      const p = point(...a), q = point(...b);
+      builder.box(object, p.map((v, i) => Math.min(v, q[i])), p.map((v, i) => Math.max(v, q[i])));
+    };
+    function sheet(u, v, h) {
+      const angle = random() * Math.PI * 2;
+      const corners = [[-0.12, -0.08], [0.12, -0.08], [0.12, 0.08], [-0.12, 0.08]];
+      builder.quad(paper, ...corners.map(([a, b]) => point(
+        u + a * Math.cos(angle) - b * Math.sin(angle), v + a * Math.sin(angle) + b * Math.cos(angle), h
+      )));
+    }
+    function can(u, v, h) {
+      const ring = Array.from({ length: 5 }, (_, i) => {
+        const angle = i * Math.PI * 2 / 5;
+        return [u + Math.cos(angle) * 0.034, v + Math.sin(angle) * 0.034];
+      });
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        builder.quad(cans, point(...a, h), point(...b, h), point(...b, h + 0.15), point(...a, h + 0.15));
+        builder.tri(cans, point(u, v, h + 0.15), point(...a, h + 0.15), point(...b, h + 0.15));
+      }
+    }
+
+    box(furniture, [-0.88, -0.33, 0.70], [0.88, 0.35, 0.77]);
+    for (const side of [-0.78, 0.71]) box(furniture, [side, -0.25, 0], [side + 0.07, 0.26, 0.70]);
+    box(furniture, [-0.23, 0.48, 0.43], [0.23, 0.90, 0.50]);
+    box(furniture, [-0.06, 0.62, 0], [0.06, 0.77, 0.43]);
+    for (let i = 0; i < 3; i++) sheet(-0.62 + random() * 1.2, (random() - 0.5) * 0.38, 0.773 + 0.003 * i);
+    sheet((random() - 0.5) * 1.4, 0.94, 0.005);
+    can(-0.68, 0.21, 0.77);
+    if (random() > 0.5) can(0.75, -0.61, 0);
+    box(models, [0.37, -0.27, 0.77], [0.68, -0.01, 0.79]);
+    const modelHeight = 0.92 + random() * 0.11;
+    box(models, [0.41, -0.22, 0.79], [0.58, -0.05, modelHeight]);
+    if (random() > 0.5) {
+      const left = point(0.41, -0.22, modelHeight), right = point(0.58, -0.22, modelHeight);
+      const peak = point(0.495, -0.22, modelHeight + 0.09);
+      const backLeft = point(0.41, -0.05, modelHeight), backRight = point(0.58, -0.05, modelHeight);
+      const backPeak = point(0.495, -0.05, modelHeight + 0.09);
+      builder.tri(models, left, right, peak);
+      builder.tri(models, backRight, backLeft, backPeak);
+      builder.quad(models, left, peak, backPeak, backLeft);
+      builder.quad(models, peak, right, backRight, backPeak);
+    }
+    if (random() > 0.68) box(models, [-0.95, -0.75, 0], [-0.65, -0.49, 0.23]);
+
+    if (random() < 0.39 || !students.tris.length) {
+      // A sloping back, a lowered head and forearms resting on the desktop.
+      const left = [[-0.18, 0.77, 0.51], [-0.18, 0.33, 0.77], [-0.18, 0.28, 0.96], [-0.18, 0.70, 0.73]];
+      const right = left.map(([, v, h]) => [0.18, v, h]);
+      for (let i = 0; i < left.length; i++) {
+        const j = (i + 1) % left.length;
+        builder.quad(students, point(...left[i]), point(...left[j]), point(...right[j]), point(...right[i]));
+      }
+      builder.quad(students, ...left.map(corner => point(...corner)).reverse());
+      builder.quad(students, ...right.map(corner => point(...corner)));
+      box(students, [-0.10, 0.04, 0.82], [0.10, 0.24, 1.00]);
+      box(students, [-0.27, -0.01, 0.77], [-0.15, 0.34, 0.84]);
+      box(students, [0.15, 0.02, 0.77], [0.27, 0.31, 0.84]);
+    }
+    if (random() < 0.22 || !bins.tris.length) {
+      box(bins, [0.58, 0.56, 0], [0.95, 0.91, 0.05]);
+      box(bins, [0.58, 0.56, 0.05], [0.61, 0.91, 0.60]);
+      box(bins, [0.92, 0.56, 0.05], [0.95, 0.91, 0.60]);
+      box(bins, [0.61, 0.56, 0.05], [0.92, 0.59, 0.60]);
+      box(bins, [0.61, 0.88, 0.05], [0.92, 0.91, 0.60]);
+      sheet(0.78, 0.75, 0.603);
+      sheet(0.92, 0.76, 0.615);
+      sheet(0.76, 0.91, 0.623);
+      sheet(0.93, 0.95, 0.007);
+    }
+  }
 }

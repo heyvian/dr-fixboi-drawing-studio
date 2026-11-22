@@ -30,17 +30,6 @@ const openDrawingWorkspace = (() => {
       a3: [297 / 25.4, 420 / 25.4],
       a2: [420 / 25.4, 594 / 25.4]
     },
-    compassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
-    compassNames = [
-      'north',
-      'northeast',
-      'east',
-      'southeast',
-      'south',
-      'southwest',
-      'west',
-      'northwest'
-    ],
     viewNames = ['axo', 'plan', 'elevation', 'nav', 'aligned'];
   footer.setAttribute('font-family', 'Arial, sans-serif');
   footer.setAttribute('font-size', '11');
@@ -64,6 +53,7 @@ const openDrawingWorkspace = (() => {
       view: 'axo',
       orbitLocked: true,
       azimuth: 5,
+      viewHeading: null,
       elevation: 225,
       storey: 3.5,
       bodies: 'layer',
@@ -103,7 +93,7 @@ const openDrawingWorkspace = (() => {
         storey: Number.isFinite(saved.storey) ? clamp(saved.storey, 1, 20) : 3.5,
         bodies: ['layer', 'object', 'none'].includes(saved.bodies) ? saved.bodies : 'layer',
         azimuth:
-          Number.isInteger(saved.azimuth) && compassPoints[saved.azimuth] ? saved.azimuth : 5,
+          Number.isInteger(saved.azimuth) && COMPASS_POINTS[saved.azimuth] ? saved.azimuth : 5,
         paper: Object.hasOwn(paperSizes, saved.paper) ? saved.paper : 'letter',
         orientation: saved.orientation === 'portrait' ? 'portrait' : 'landscape',
         scale: DRAWING_SCALES.includes(Number(saved.scale)) ? saved.scale : 'auto',
@@ -172,8 +162,10 @@ const openDrawingWorkspace = (() => {
   function restoreSnapshot(snapshot) {
     base = structuredClone(snapshot.base);
     // Sheets saved before the projection toolbar used independent compass directions.
-    settings = { orbitLocked: false, ...structuredClone(snapshot.settings), pens: drawingPens(snapshot.settings.pens) };
+    settings = { orbitLocked: false, viewHeading: null, ...structuredClone(snapshot.settings), pens: drawingPens(snapshot.settings.pens) };
     titleFields.forEach((field, i) => { field.value = snapshot.titles?.[i] ?? ''; });
+    if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
+      titleFields[0].value = sourceModel.name;
     const hidden = new Set(snapshot.hiddenLayers);
     for (const layer of sourceModel.layers) layer.visible = !hidden.has(layer.key);
   }
@@ -287,40 +279,36 @@ const openDrawingWorkspace = (() => {
   function viewCamera() {
     const top = Math.PI / 2 - 1e-7;
     const orbit = lockedOrbit();
-    if (settings.view === 'plan') return { az: orbit?.az ?? -Math.PI / 2, el: top };
+    const heading = settings.viewHeading;
+    const azimuth = heading == null ? orbit?.az : compassAzimuth(heading);
+    if (settings.view === 'plan')
+      return { az: heading == null ? orbit?.az ?? -Math.PI / 2 : compassAzimuth(heading) - Math.PI, el: top };
     if (settings.view === 'nav' && base) return { az: base.az, el: base.el };
     if (settings.view === 'elevation')
-      return { az: orbit?.az ?? (Math.PI / 2 + (settings.elevation * Math.PI) / 180), el: 0 };
+      return { az: azimuth ?? compassAzimuth(settings.elevation), el: 0 };
     const plane = currentPlane();
     if (settings.view === 'aligned' && plane) {
       if (plane.axis === 'horizontal') return { az: -Math.PI / 2, el: plane.flip ? -top : top };
       return { az: (plane.angle * Math.PI) / 180 + (plane.flip ? Math.PI : 0), el: 0 };
     }
     // Plan north is world +Z. Moving clockwise on the compass follows the plan axes.
-    return { az: orbit?.az ?? (Math.PI / 2 + (settings.azimuth * Math.PI) / 4), el: 0.57 };
+    return { az: azimuth ?? compassAzimuth(settings.azimuth * 45), el: 0.57 };
   }
   const compass = $('drawingCompass');
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
   for (const button of sheetViewButtons)
     button.onclick = () => selectSheetView(button.dataset.sheetView, true);
-  for (const index of [7, 0, 1, 6, 2, 5, 4, 3]) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = compassPoints[index];
-    button.setAttribute('aria-label', 'View from ' + compassNames[index]);
-    button.dataset.azimuth = index;
-    button.onclick = () => {
-      if (settings.view === 'elevation') settings.elevation = index * 45;
-      else settings.azimuth = index;
-      syncCompass();
-      queueDrawing();
-    };
-    compass.append(button);
-  }
+  const showHeading = createViewCompass(compass, (heading) => {
+    settings.viewHeading = heading;
+    syncCompass();
+    queueDrawing();
+  });
   function syncCompass() {
     const elevation = settings.view === 'elevation';
-    compass.hidden = Boolean(lockedOrbit()) || (settings.view !== 'axo' && !elevation);
-    $('drawingOrbitField').hidden = Boolean(lockedOrbit()) || !elevation;
+    const plan = settings.view === 'plan';
+    compass.hidden = settings.view !== 'axo' && !elevation && !plan;
+    compass.setAttribute('aria-label', plan ? 'Plan orientation compass' : 'View direction compass');
+    $('drawingOrbitField').hidden = !elevation;
     const viewPicker = $('drawingView');
     viewPicker.value = settings.view;
     $('useNavView').disabled = !viewer.ok;
@@ -330,16 +318,10 @@ const openDrawingWorkspace = (() => {
       viewPicker.querySelector(`[value="${view}"]`).disabled = button.disabled;
       button.setAttribute('aria-pressed', String(view === settings.view));
     }
-    $('drawingOrbit').value = settings.elevation;
-    $('drawingOrbitAngle').textContent = settings.elevation + '°';
-    for (const button of compass.children)
-      button.setAttribute(
-        'aria-pressed',
-        String(
-          Number(button.dataset.azimuth) ===
-            (elevation ? settings.elevation / 45 : settings.azimuth)
-        )
-      );
+    const heading = compassHeading(viewCamera().az + (plan ? Math.PI : 0));
+    $('drawingOrbit').value = heading;
+    $('drawingOrbitAngle').textContent = heading + '°';
+    showHeading(heading, plan);
     $('drawingPlanSheetField').hidden = $('printFloorSet').hidden = settings.view !== 'plan';
     $('drawingPlanSheet').value = settings.planSheet;
     sheet.classList.toggle('planset', allPlans());
@@ -1009,7 +991,7 @@ const openDrawingWorkspace = (() => {
   }
   $('drawingView').onchange = (event) => selectSheetView(event.target.value);
   $('drawingOrbit').oninput = (event) => {
-    settings.elevation = event.target.valueAsNumber;
+    settings.viewHeading = event.target.valueAsNumber;
     syncCompass();
     queueDrawing();
   };
@@ -1445,6 +1427,7 @@ const openDrawingWorkspace = (() => {
       titleFields[0].value = model.name;
       titleFields[1].value = titleFields[2].value = '';
       settings.planSheet = 'single';
+      settings.viewHeading = null;
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
       try {
         const working = JSON.parse(localStorage.getItem(activeStorageKey()));
@@ -1470,6 +1453,7 @@ const openDrawingWorkspace = (() => {
     if (select) {
       settings.view = 'nav';
       settings.orbitLocked = true;
+      settings.viewHeading = null;
       settings.placement = { x: 0, y: 0, ground: false, center: false };
       stopPlacing();
     }

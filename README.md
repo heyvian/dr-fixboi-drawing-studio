@@ -2,17 +2,17 @@
 
 Standalone drawing tool extracted from the [Poly Nation Cross Pollination Laboratory](https://github.com/heyvian/poly-nation). It takes a 3D model and produces architectural linework drawings: axonometrics, plans, floor plans, elevations and sections, with line weights, clipping planes, SVG export and print/PDF.
 
-Instead of the lab's generated geometry, it imports supported Rhino `.3dm` geometry and OBJ files. The built-in sample is The Valentine, Calgary’s former Nexen Building.
+Instead of the lab's generated geometry, it imports supported Rhino `.3dm` geometry and OBJ files. The built-in sample is The Optics Building.
 
-The Valentine sample uses the supplied `val.obj` footprint and envelope. Its 28 evenly spaced levels, core, glazing and façade divisions are an illustrative reconstruction for testing plans and sections. The spacing and interior layout come from modelling assumptions.
+The Optics Building uses the supplied `val.obj` shell as a starting point, with 28 illustrative levels and populated design studios. Furniture, students, desktop clutter and recycling can be shown or hidden independently when drawing plans and sections.
 
 ## Use
 
 Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no build step. Opening `index.html` directly also works in browsers that allow local files.
 
 1. Click **Open Rhino file…** (or drag a `.3dm` / `.obj` onto the page), or **Load sample**.
-2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo/Plan/N/E/S/W buttons for standard views. Double-click a point (or use **Set orbit centre** and click) to make it the orbit centre, marked by a red crosshair: orbiting turns around it and the standard-view buttons centre on it, keeping your zoom. **Zoom extents** resets the centre to the middle of the model. The 3D view is orthographic, so it matches the drawing projection.
-3. Choose **Draw this view** (or the **Drawing Sheet** tab) to capture the 3D view. Use the buttons above the sheet to switch between Captured view, Axonometric, Plan, and Elevation. These projections use the captured orbit direction and target. Drag the sheet or use the arrow keys to pan it independently of the 3D camera. A selected clipping plane also provides its own projection.
+2. The model opens in **3D navigate**: drag to orbit, right-drag or Shift-drag to pan, wheel to zoom to the cursor, **Zoom extents** (or Home) to fit everything, and the Axo, Elevation and Plan buttons with their direction compass for standard views. Double-click a point (or use **Set orbit centre** and click) to make it the orbit centre, marked by a red crosshair: orbiting turns around it and the standard-view buttons centre on it, keeping your zoom. **Zoom extents** resets the centre to the middle of the model. The 3D view is orthographic, so it matches the drawing projection.
+3. Choose **Draw this view** (or the **Drawing Sheet** tab) to capture the 3D view. Use the buttons above the sheet to switch between Captured view, Axonometric, Plan, and Elevation. These projections use the captured orbit direction and target. Drag the sheet or use the arrow keys to pan it independently of the 3D camera. Use the compass to set the drawing’s direction without moving the 3D camera. A selected clipping plane also provides its own projection.
 4. **Recapture 3D view** takes a fresh reference from the 3D camera and resets sheet panning. Set the rendering mode, clipping planes and line weights in the drawing controls.
 5. Choose Letter, Tabloid, A4, A3 or A2, and fill in the sheet title, number and revision.
 6. Save a named view to recall its framing, visible layers, clipping planes, pens and sheet setup.

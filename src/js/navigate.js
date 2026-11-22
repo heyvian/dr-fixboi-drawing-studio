@@ -229,8 +229,13 @@ const viewer = (() => {
   // Jump to a standard view, turning about the focus point and centring it. The zoom is kept.
   function preset(name) {
     if (name === 'iso') return axo();
+    if (name === 'elevation') return elevation(compassHeading(camera.az));
     Object.assign(camera, PRESETS[name]);
     activeAxo = null;
+    centerPreset();
+  }
+
+  function centerPreset() {
     camera.target = [...focus];
     revision++;
     onMove?.();
@@ -241,12 +246,23 @@ const viewer = (() => {
   // same numbering as the drawing's compass. The Axo button reuses the last one chosen.
   function axo(index = lastAxo) {
     lastAxo = activeAxo = index;
-    camera.az = Math.PI / 2 + (index * Math.PI) / 4;
+    camera.az = compassAzimuth(index * 45);
     camera.el = HOME.el;
-    camera.target = [...focus];
-    revision++;
-    onMove?.();
-    draw();
+    centerPreset();
+  }
+
+  function elevation(heading) {
+    activeAxo = null;
+    camera.az = compassAzimuth(heading);
+    camera.el = 0;
+    centerPreset();
+  }
+
+  function plan(heading) {
+    activeAxo = null;
+    camera.az = compassAzimuth(heading) - Math.PI;
+    camera.el = TOP;
+    centerPreset();
   }
 
   const basisNow = () => orbitBasis(camera);
@@ -486,6 +502,8 @@ const viewer = (() => {
     redraw: draw,
     setPicking,
     axo,
+    elevation,
+    plan,
     set onMove(fn) {
       onMove = fn;
     },

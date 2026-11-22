@@ -115,6 +115,14 @@ const { makeFixture } = require('./fixture');
   assert.deepStrictEqual(await page.evaluate(() => viewer.snapshot()), capturedCamera);
   assert(await page.locator('#navStage').isHidden());
   await page.selectOption('#drawingView', 'axo');
+  await page.locator('#exportDrawing:enabled').waitFor();
+  const axo = await page.locator('#drawingLinework').getAttribute('d');
+  const southwest = page.locator('#drawingCompass [data-compass-point="SW"]');
+  await southwest.click();
+  assert.strictEqual(await southwest.getAttribute('aria-pressed'), 'true');
+  await page.locator('#exportDrawing:enabled').waitFor();
+  assert.notStrictEqual(await page.locator('#drawingLinework').getAttribute('d'), axo);
+  assert.deepStrictEqual(await page.evaluate(() => viewer.snapshot()), capturedCamera);
 
   await page.fill('#savedViewName', 'Issue axonometric');
   await page.fill('#drawingNumber', 'A-101');

@@ -33,22 +33,42 @@
 .drawing-pen-row input { width: 100%; min-width: 0; }
 .drawing-export-help .hint { margin: 7px 0; }
 .drawing-export-help a { color: var(--accent); }
-.drawing-compass {
+.view-compass {
  display: grid;
  grid-template-columns: repeat(3, 42px);
+ grid-template-rows: repeat(3, 35px);
  gap: 3px;
- margin: 8px 0;
 }
-.drawing-compass[hidden], .drawing-controls [hidden], #printFloorSet[hidden] { display: none; }
+.drawing-compass { margin: 8px 0; }
+.view-compass[hidden], .drawing-controls [hidden], #printFloorSet[hidden] { display: none; }
 .drawing-orbit { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin: 7px 0 12px; }
 .drawing-orbit input { grid-column: 1/-1; width: 100%; margin: 0; }
 .drawing-plane-offset-tools { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .drawing-plane-offset-tools input { min-width: 0; }
 .drawing-plane-offset-tools button { padding: 3px 6px; font-size: 11px; white-space: nowrap; }
 .drawing-sheet.planset { cursor: default; }
-.drawing-compass button { min-height: 26px; padding: 2px 4px; font-size: 11px; }
-.drawing-compass button[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
-.drawing-compass button:nth-child(5) { grid-column: 3; }
+.view-compass button {
+ display: grid;
+ justify-items: center;
+ align-content: center;
+ gap: 2px;
+ min-height: 0;
+ padding: 1px;
+ font: 700 10px/1 var(--mono);
+}
+.view-compass button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: white; }
+.compass-arrow { transform: rotate(var(--compass-turn)); font: 700 15px/1 system-ui, sans-serif; }
+.view-compass::after {
+ content: '';
+ pointer-events: none;
+ grid-area: 2 / 2;
+ place-self: center;
+ width: 12px;
+ height: 12px;
+ border-radius: 50%;
+ border: 1px solid var(--accent);
+ box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 7px var(--accent);
+}
 .drawing-plane-list { display: grid; gap: 6px; margin: 8px 0; }
 .drawing-plane-row {
  display: grid;
@@ -105,9 +125,9 @@
 .nav-stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px; gap: 8px; }
 .nav-stage[hidden], .nav-only[hidden] { display: none; }
 .nav-stage .hint { margin: 0; }
-.nav-views, .nav-compass { display: inline-flex; gap: 4px; }
-.nav-compass[hidden], .nav-axo-menu[hidden] { display: none; }
-/* The axo compass drops down under the Axo button while an axonometric view is showing. */
+.nav-views { display: inline-flex; gap: 4px; }
+.nav-axo-menu[hidden] { display: none; }
+/* Keep projection directions together underneath the view controls. */
 .nav-axo { position: relative; display: inline-block; }
 .nav-axo-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; display: flex; gap: 6px; align-items: center;
   padding: 6px 8px; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.15); white-space: nowrap; }
@@ -124,7 +144,7 @@
 .nav-focus::before { left: 50%; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; }
 .nav-focus::after { top: 50%; left: -5px; right: -5px; height: 2px; margin-top: -1px; }
 .nav-focus[hidden] { display: none; }
-#navSetFocus[aria-pressed=true], #navAxoCompass button[aria-pressed=true] { background: #294e3e; border-color: #294e3e; color: white; }
+#navSetFocus[aria-pressed=true], .nav-views button[aria-pressed=true] { background: var(--ink); border-color: var(--ink); color: white; }
 .nav-keys { margin: 4px 0 12px; padding-left: 18px; }
 .nav-lines { border: 1px solid var(--line); border-radius: 4px; margin: 0 0 12px; padding: 6px 10px 8px; display: grid; gap: 4px; }
 .nav-lines label { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; font-weight: 500; }

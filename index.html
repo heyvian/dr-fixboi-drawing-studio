@@ -52,6 +52,7 @@
           <div class="landing-field" aria-hidden="true">
             <canvas id="landingArtwork" class="artwork-layer" width="1200" height="900"></canvas>
             <canvas id="landingFragments" class="artwork-layer" width="1200" height="900"></canvas>
+            <div class="artwork-grain"></div>
             <div class="field-orbit"></div>
             <div class="field-datum"></div>
           </div>
@@ -69,9 +70,8 @@
               <img class="sample-back" src="src/assets/sample-sheets/plan.svg" alt="" width="1700" height="1100" />
               <img class="sample-back" src="src/assets/sample-sheets/elevation.svg" alt="" width="1700" height="1100" />
               <img class="sample-back" src="src/assets/sample-sheets/section.svg" alt="" width="1700" height="1100" />
-              <img id="sampleSheetImage" src="src/assets/sample-sheets/axonometric-ne.svg" alt="Northeast axonometric drawing of The Valentine" width="1700" height="1100" />
+              <img id="sampleSheetImage" src="src/assets/sample-sheets/axonometric-ne.svg" alt="Northeast axonometric drawing of The Optics Building" width="1700" height="1100" />
             </div>
-            <figcaption>The Valentine / <span id="sampleSheetView">NE axonometric</span> / 11 × 17 in</figcaption>
           </figure>
         </div>
       </div>
@@ -124,7 +124,7 @@
               <option value="aligned" disabled>Aligned to clipping plane</option>
             </select>
           </label>
-          <div id="drawingCompass" class="drawing-compass" role="group" aria-label="View compass"></div>
+          <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
           <label id="drawingOrbitField" class="drawing-orbit" hidden
             >Horizontal orbit <output id="drawingOrbitAngle"></output>
             <input id="drawingOrbit" type="range" min="0" max="359" step="1" />
@@ -335,19 +335,12 @@
             <span class="nav-views" role="group" aria-label="Standard views">
               <span class="nav-axo">
                 <button type="button" data-view="iso" title="Axonometric from the last compass point chosen">Axo</button>
+                <button type="button" data-view="elevation">Elevation</button>
                 <span class="nav-axo-menu" id="navAxoGroup">
-                  <span class="nav-label">Axo from</span>
-                  <span class="nav-compass" id="navAxoCompass" role="group" aria-label="Axonometric view from compass point"></span>
+                  <span class="view-compass" id="navAxoCompass" role="group" aria-label="3D view direction compass"></span>
                 </span>
               </span>
               <button type="button" data-view="top">Plan</button>
-            </span>
-            <span class="nav-label">Elevation</span>
-            <span class="nav-views" role="group" aria-label="Elevation views">
-              <button type="button" data-view="north" title="Elevation looking at the north face">N</button>
-              <button type="button" data-view="east" title="Elevation looking at the east face">E</button>
-              <button type="button" data-view="south" title="Elevation looking at the south face">S</button>
-              <button type="button" data-view="west" title="Elevation looking at the west face">W</button>
             </span>
             <button type="button" class="primary" id="navToDrawing">Draw this view</button>
           </div>

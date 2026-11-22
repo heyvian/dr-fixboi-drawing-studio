@@ -44,6 +44,39 @@ function orbitBasis({ az, el }) {
   return { back, right, up: unit(cross(back, right)) };
 }
 
+const COMPASS_POINTS = [
+  ['N', 'north', 2, 1], ['NE', 'northeast', 3, 1], ['E', 'east', 3, 2], ['SE', 'southeast', 3, 3],
+  ['S', 'south', 2, 3], ['SW', 'southwest', 1, 3], ['W', 'west', 1, 2], ['NW', 'northwest', 1, 1]
+];
+const compassAzimuth = (degrees) => Math.PI / 2 + degrees * Math.PI / 180;
+const compassHeading = (azimuth) => mod(Math.round((azimuth - Math.PI / 2) * 180 / Math.PI), 360);
+
+function createViewCompass(element, choose) {
+  const buttons = COMPASS_POINTS.map(([label, name, column, row], index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.style.gridColumn = column;
+    button.style.gridRow = row;
+    button.style.setProperty('--compass-turn', index * 45 + 'deg');
+    button.dataset.compassPoint = label;
+    button.setAttribute('aria-label', 'View from ' + name);
+    const arrow = document.createElement('span');
+    arrow.className = 'compass-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '↓';
+    button.append(arrow, label);
+    button.onclick = () => choose(index * 45);
+    return button;
+  });
+  element.append(...buttons);
+  return (heading, plan = false) => {
+    buttons.forEach((button, index) => {
+      button.setAttribute('aria-label', (plan ? 'Top of plan toward ' : 'View from ') + COMPASS_POINTS[index][1]);
+      button.setAttribute('aria-pressed', String(heading === index * 45));
+    });
+  };
+}
+
 // Offer text or an SVG string to the browser as a file download.
 function downloadBlob(data, type, name) {
   const url = URL.createObjectURL(new Blob([data], { type })),
