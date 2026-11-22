@@ -20,7 +20,7 @@ Changing the drawing scale keeps whatever is at the centre of the sheet in place
 
 Use **Paper size → Custom size…** to save a named sheet in millimetres or inches. Custom sizes are available across models in the same browser and can be recalled with a saved view.
 
-In **Line weights**, camera-distance assignment shows which depths each pen covers. Printed widths stay fixed by default. For `.3dm` files, **Rhino Print Width by layer** reads the Print Width column from the Layers panel, uses 0.25 mm for layers set to Default, and omits layers set to No print from the sheet. The overall silhouette, key outlines and ground line have their own printed widths and colours. Ground lines appear in elevations and vertical sections.
+In **Line weights**, camera-distance assignment shows which depths each pen covers. Pen widths are set in printed millimetres. A 0.50 mm stroke stays 0.50 mm when you change the drawing scale. For `.3dm` files, **Rhino Print Width by layer** reads the Print Width column from the Layers panel, uses 0.25 mm for layers set to Default, and omits layers set to No print from the sheet. The overall silhouette, key outlines and ground line have their own printed widths and colours. Ground lines appear in elevations and vertical sections.
 
 ### Illustrator
 

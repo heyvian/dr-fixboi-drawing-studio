@@ -239,7 +239,7 @@ function renderDrawing(
   if (pens.curves)
     for (const { a, b, component, texture } of geometry.lines)
       strokeModelEdge(a, b, component, 1, texture);
-  const palette = drawingPenPalette(pens, geometry.model, denominator),
+  const palette = drawingPenPalette(pens, geometry.model),
     { ranked, layerIndices } = palette,
     count = ranked.length,
     ink = Array.from({ length: count }, () => []),

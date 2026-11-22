@@ -330,7 +330,6 @@ const DRAWING_PEN_PRESETS = [
   [0.7, 0.5, 0.35, 0.25, 0.18]
 ];
 const DRAWING_PEN_LIMITS = { min: 0.05, max: 2, step: 0.01 };
-const DRAWING_PEN_REFERENCE_SCALE = 250;
 const RHINO_DEFAULT_PLOT_WIDTH = 0.25;
 const rhinoPlotWidth = ({ plotWeight }) => plotWeight === -1 || plotWeight > 0 ? plotWeight : RHINO_DEFAULT_PLOT_WIDTH;
 const DRAWING_DETAIL_PENS = {
@@ -342,22 +341,6 @@ const DRAWING_DETAIL_PENS = {
     help: 'Marks the model’s base in elevations and vertical sections.' }
 };
 
-function drawingPenScale(pens, denominator) {
-  // Preserve more of the stroke width than a direct geometric scale would. The bounds keep
-  // overview ink legible and prevent large-scale crops from acquiring disproportionately heavy ink.
-  return pens.adaptToScale
-    ? clamp((DRAWING_PEN_REFERENCE_SCALE / denominator) ** 0.25, 0.45, 1.35)
-    : 1;
-}
-
-function printedDrawingPenWidths(pens, denominator) {
-  if (!pens.adaptToScale) return pens.widths;
-  const factor = drawingPenScale(pens, denominator);
-  return pens.widths.map((width) =>
-    Number(clamp(width * factor, DRAWING_PEN_LIMITS.min, DRAWING_PEN_LIMITS.max).toFixed(2))
-  );
-}
-
 function drawingPensByWeight(widths) {
   return widths.map((_, index) => index).sort((a, b) => widths[b] - widths[a]);
 }
@@ -366,9 +349,9 @@ function drawingPenDepthRange(pens) {
   return [Math.min(pens.distanceFrom, pens.distanceTo - 5), Math.max(pens.distanceTo, pens.distanceFrom + 5)];
 }
 
-function drawingPenPalette(pens, model, denominator) {
+function drawingPenPalette(pens, model) {
   if (pens.mode !== 'rhino') {
-    return { widths: printedDrawingPenWidths(pens, denominator), colors: pens.colors,
+    return { widths: pens.widths, colors: pens.colors,
       ranked: drawingPensByWeight(pens.widths), layerIndices: null };
   }
   const weightsByLayer = model.layers.filter((layer) => layer.visible && rhinoPlotWidth(layer) > 0)
@@ -392,7 +375,6 @@ function drawingPens(saved = {}) {
       : 3;
   return {
     mode: ['distance', 'component', 'profile', 'rhino'].includes(saved?.mode) ? saved.mode : 'distance',
-    adaptToScale: saved?.adaptToScale === true,
     silhouette: saved?.silhouette === true,
     componentOutlines: saved?.componentOutlines === true,
     groundLine: saved?.groundLine === true,

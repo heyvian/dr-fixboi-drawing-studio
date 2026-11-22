@@ -528,8 +528,7 @@ const openDrawingWorkspace = (() => {
     }
     const layers = [colorLayer, textureLayer];
     const firstInk = ink.findIndex(Boolean);
-    const baseWidths = pens.mode === 'rhino' ? widths : pens.widths;
-    const order = widths.map((_, i) => i).sort((a, b) => baseWidths[a] - baseWidths[b]);
+    const order = widths.map((_, i) => i).sort((a, b) => widths[a] - widths[b]);
     for (const i of order) {
       const width = widths[i],
         stroke = colors[i];
@@ -789,8 +788,6 @@ const openDrawingWorkspace = (() => {
       // Elevations and upright sections have an edge-on plan. Their footer only needs the scale.
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
-      syncPenScaleNote(denominator);
-      syncPenDepth();
       setDrawingOutputAvailable(rendered.populated);
       $('printFloorSet').disabled = printingFloorSet;
       resizePaperPreview();
@@ -865,14 +862,6 @@ const openDrawingWorkspace = (() => {
     $('placeDrawingPlane').setAttribute('aria-pressed', 'false');
     sheet.dataset.placing = 'false';
   }
-  function syncPenScaleNote(denominator) {
-    const pens = settings.pens;
-    const widths = printedDrawingPenWidths(pens, denominator).map((width) => width.toFixed(2));
-    $('drawingPenScaleNote').textContent = pens.adaptToScale
-      ? `Your settings apply at 1:${DRAWING_PEN_REFERENCE_SCALE}. At 1:${denominator} the numbered pens print at ${widths.join(' / ')} mm.`
-      : 'Widths stay fixed on paper at every scale.';
-  }
-
   const detailPenControls = Object.entries(DRAWING_DETAIL_PENS).map(([key, { id, label, help }]) => {
     const row = document.createElement('div'),
       toggleLabel = document.createElement('label'),
@@ -935,8 +924,8 @@ const openDrawingWorkspace = (() => {
     const pens = settings.pens;
     if (pens.mode !== 'distance') return;
     const [start, end] = drawingPenDepthRange(pens);
-    const ranked = drawingPensByWeight(pens.widths);
-    const widths = printedDrawingPenWidths(pens, rendered?.denominator ?? DRAWING_PEN_REFERENCE_SCALE);
+    const { widths } = pens;
+    const ranked = drawingPensByWeight(widths);
     const row = $('drawingDepthBands'), strip = $('drawingDepthStrip');
     $('drawingDepthAdjust').hidden = ranked.length === 1;
     $('drawingDistanceFrom').value = start;
@@ -967,7 +956,7 @@ const openDrawingWorkspace = (() => {
     if (rhino.disabled && pens.mode === 'rhino') pens.mode = 'distance';
     modes.value = pens.mode;
     const useRhino = pens.mode === 'rhino';
-    $('drawingCustomPens').hidden = $('drawingPenScaling').hidden = useRhino;
+    $('drawingCustomPens').hidden = useRhino;
     $('drawingRhinoPens').hidden = !useRhino;
     if (useRhino) {
       const rows = sourceModel.layers.map((layer) => {
@@ -979,7 +968,6 @@ const openDrawingWorkspace = (() => {
     $('drawingPaperColor').value = pens.paper;
     $('drawingInkColor').value = pens.colors[0];
     $('drawingPenCount').value = pens.widths.length;
-    $('drawingAdaptWeights').checked = pens.adaptToScale;
     for (const { key, toggle, width, color, fields } of detailPenControls) {
       toggle.checked = pens[key];
       fields.hidden = !toggle.checked;
@@ -1084,10 +1072,6 @@ const openDrawingWorkspace = (() => {
       widths: DRAWING_PEN_PRESETS[Number(event.target.value)]
     });
     syncPenControls();
-    queueDrawing();
-  };
-  $('drawingAdaptWeights').onchange = (event) => {
-    settings.pens.adaptToScale = event.target.checked;
     queueDrawing();
   };
   for (const [id, key] of [

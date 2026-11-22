@@ -616,7 +616,7 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
 .detail-pen + .detail-pen { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .detail-pen-fields { display: grid; grid-template-columns: minmax(0, 84px) minmax(0, 44px); gap: 8px; margin-top: 5px; }
 .detail-pen-fields input { width: 100%; }
-.drawing-pen-scaling { padding-top: 8px; border-top: 1px solid var(--line); }
+.pen-width-note { padding-top: 8px; border-top: 1px solid var(--line); }
 #navStatus, #drawingStatus { font: 11px/1.5 var(--mono); padding-left: 9px; border-left: 3px solid #8b579d; }
 .nav-canvas-frame, .drawing-paper {
   position: relative;

@@ -200,7 +200,7 @@ const { makeFixture } = require('./fixture');
   const nearWeight = await page.inputValue('#drawingDistanceFrom');
   assert.deepStrictEqual(await page.locator('#drawingDepthBands li span:last-child').allTextContents(),
     ['0%–34%', '34%–67%', '67%–100%']);
-  assert.strictEqual(await page.isChecked('#drawingAdaptWeights'), false);
+  assert.strictEqual(await page.getByRole('checkbox', { name: 'Adapt weights to scale' }).count(), 0);
   const firstLayer = page.locator('#layerList input[type=checkbox]').first();
   await firstLayer.uncheck();
   await page.click('#saveView');
@@ -283,6 +283,29 @@ const { makeFixture } = require('./fixture');
   await projection('elevation');
   await page.selectOption('#drawingBodies', 'none');
   await page.click('#penMenuToggle');
+  const originalPenCount = await page.inputValue('#drawingPenCount');
+  await page.selectOption('#drawingPenCount', '1');
+  const penWidth = page.getByRole('spinbutton', { name: 'Pen 1 width in millimetres' });
+  await penWidth.fill('0.50');
+  await penWidth.press('Tab');
+  for (const scale of ['50', '250', '5000']) {
+    await page.selectOption('#drawingScale', scale);
+    await page.locator('#exportDrawing:enabled').waitFor();
+    const previewWidth = await page.locator('#drawingLinework').evaluate((stroke) =>
+      Number(stroke.getAttribute('stroke-width')) * 250 / stroke.ownerSVGElement.viewBox.baseVal.width);
+    assert(Math.abs(previewWidth - 0.50) < 1e-6, `preview width stays at 0.50 mm at 1:${scale}`);
+    const [penDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportDrawing')]);
+    assert(penDownload.suggestedFilename().endsWith(`-1-${scale}.svg`));
+    const penSvg = await fs.promises.readFile(await penDownload.path(), 'utf8');
+    const exportedWidths = await page.evaluate((source) => {
+      const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
+      return [...svg.querySelectorAll('[data-layer^="Pen 1"] path')].map((path) => Number(path.getAttribute('stroke-width')));
+    }, penSvg);
+    assert(exportedWidths.length && exportedWidths.every((width) => Math.abs(width - 0.50 * 72 / 25.4) < 1e-6),
+      `exported width stays at 0.50 mm at 1:${scale}`);
+  }
+  await page.selectOption('#drawingPenCount', originalPenCount);
+  await page.selectOption('#drawingScale', 'auto');
   assert.strictEqual(await page.isChecked('#drawingGroundLine'), false);
   await page.check('#drawingSilhouette');
   await page.getByRole('spinbutton', { name: 'Overall silhouette width (mm)' }).fill('0.82');
