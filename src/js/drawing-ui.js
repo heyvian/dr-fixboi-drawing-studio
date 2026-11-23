@@ -506,7 +506,7 @@ const openDrawingWorkspace = (() => {
       'font-size': 8,
       'text-anchor': 'end'
     });
-    endLabel.textContent = `${metres} m`;
+    endLabel.textContent = metres < 1 ? `${Math.round(metres * 1000)} mm` : `${metres} m`;
     const ratio = svgElement('text', {
       x: end,
       y: baseline,

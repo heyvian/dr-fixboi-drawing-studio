@@ -317,7 +317,7 @@ function drawingExportFills(geometry, projected, seeThrough, clips, width, heigh
   return traceDrawingFills(pixels, columns, rows, resolution);
 }
 
-const DRAWING_SCALES = [50, 100, 200, 250, 500, 1000, 2000, 2500, 5000];
+const DRAWING_SCALES = [1, 2, 4, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000];
 const DRAWING_PIXELS_PER_INCH = 88;
 const DRAWING_TILE_MARGIN = 8;
 const DRAWING_TILE_RESERVED_HEIGHT = 35;

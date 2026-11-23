@@ -16,7 +16,7 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 6. Save a named view to recall its framing, visible layers, clipping planes, pens and sheet setup.
 7. Use **Export SVG** for Illustrator, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to open the browser’s print dialog. In Plan, **Print floor set** in the View box prints one sheet per floor at a shared scale.
 
-Changing the drawing scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
+Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
 
 Use **Paper size → Custom size…** to save a named sheet in millimetres or inches. Custom sizes are available across models in the same browser and can be recalled with a saved view.
 

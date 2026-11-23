@@ -105,7 +105,7 @@ const { makeFixture } = require('./fixture');
 
   // Changing scale keeps the framing: the sheet centre must not jump back to the model centre.
   const sheetBefore = await page.locator('#drawingSheet').innerHTML();
-  await page.selectOption('#drawingScale', { index: 6 });
+  await page.selectOption('#drawingScale', '1000');
   await page.waitForTimeout(600);
   await shot('draw-rescaled');
   assert.notStrictEqual(await page.locator('#drawingSheet').innerHTML(), sheetBefore);
@@ -375,6 +375,17 @@ const { makeFixture } = require('./fixture');
   await page.selectOption('#drawingScale', 'auto');
   elevation = await elevationOnPaper();
   assert(Math.abs(elevation.height - 1828.8 / elevation.ratio) < 0.05, 'Auto fit uses the newly interpreted feet');
+
+  await page.click('#fileMenuToggle');
+  await page.selectOption('#unitSelect', 'cm');
+  await page.waitForFunction(() => document.querySelector('#importStatus').textContent.includes('Centimetres (override)'));
+  await page.locator('#fileMenuToggle').press('Escape');
+  await page.selectOption('#drawingScale', '1');
+  elevation = await elevationOnPaper();
+  assert.strictEqual(elevation.ratio, 1);
+  assert(Math.abs(elevation.height - 60) < 0.05, 'a 60 mm model measures 60 mm at 1:1');
+  assert.match(await page.locator('#drawingSheet [data-layer="Title and scale"]').textContent(), /20 mm/);
+  await page.selectOption('#drawingScale', 'auto');
 
   if (process.env.APP_URL) {
     const { bytes } = await makeFixture();
