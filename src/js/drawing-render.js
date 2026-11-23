@@ -97,6 +97,7 @@ function renderDrawing(
       placement.y * pixelsPerMillimetre,
     projected = raw.map(([x, y, z]) => [originX + x * scale, originY + y * scale, z]),
     depth = new Float32Array(width * height).fill(-Infinity),
+    occlusion = { owners: new Uint32Array(width * height), faces: [null] },
     paint = rendering !== 'linework' ? new ImageData(width, height) : null,
     sun = unit([-0.4, 1, 0.65]),
     cutLines = [];
@@ -125,7 +126,8 @@ function renderDrawing(
         paint?.data,
         color,
         body ? outline : null,
-        body
+        body,
+        occlusion
       );
     }
     for (const plane of clips) {
@@ -156,12 +158,12 @@ function renderDrawing(
     { x: 0, y: -1, z: 0, level: -margin },
     { x: 0, y: 1, z: 0, level: margin + drawingHeight }
   ];
-  function strokeVisible(startPoint, endPoint, collect) {
+  function strokeVisible(startPoint, endPoint, collect, minimumLength = 0.35) {
     const paperLine = clipDrawingLine(startPoint, endPoint, sheetEdges);
     if (!paperLine) return;
     const [a, b] = paperLine;
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (length < 0.35) return;
+    if (length <= minimumLength) return;
     const steps = Math.ceil(length);
     let start = null;
     for (let i = 0; i <= steps; i++) {
@@ -169,15 +171,8 @@ function renderDrawing(
         x = a[0] + (b[0] - a[0]) * t,
         y = a[1] + (b[1] - a[1]) * t,
         z = a[2] + (b[2] - a[2]) * t,
-        column = Math.floor(x),
-        row = Math.floor(y),
-        visible =
-          column >= 0 &&
-          column < width &&
-          row >= 0 &&
-          row < height &&
-          z + tolerance >= depth[row * width + column];
-      if (visible && start == null) start = i;
+        visible = !drawingStrokeOccluded(occlusion, width, x, y, z + tolerance);
+      if (visible && start == null) start = Math.max(0, i - 0.5);
       if ((!visible || i === steps) && start != null) {
         const end = visible ? i : i - 0.5;
         if (end - start > 0.2) {
@@ -186,7 +181,7 @@ function renderDrawing(
             from = coordinate(first),
             to = coordinate(last),
             key = from < to ? from + '/' + to : to + '/' + from;
-          if (!seen.has(key) && collect('M' + from + 'L' + to, first, last) !== false) {
+          if (from !== to && !seen.has(key) && collect('M' + from + 'L' + to, first, last) !== false) {
             seen.add(key);
           }
         }
@@ -196,7 +191,7 @@ function renderDrawing(
   }
   // Draw section cuts first in the deduplication set so their heavier weight wins.
   for (const [a, b] of cutLines) strokeVisible(a, b, (command) => section.push(command));
-  function strokeModelEdge(a, b, component, detail, texture = false, bodies = null, outlineOnly = false) {
+  function strokeModelEdge(a, b, component, detail, { texture = false, bodies, outlineOnly, minimumLength } = {}) {
     const clipped = clipDrawingLine(projected[a], projected[b], clips);
     if (clipped)
       strokeVisible(clipped[0], clipped[1], (command, from, to) => {
@@ -213,7 +208,7 @@ function renderDrawing(
           texture,
           boundary
         });
-      });
+      }, minimumLength);
   }
   const creaseLimit = Math.cos((pens.creaseAngle * Math.PI) / 180);
   for (const { start, end, faces } of geometry.edges) {
@@ -234,11 +229,11 @@ function renderDrawing(
     const joint = pens.componentOutlines && bodies.some((body) => body !== bodies[0]);
     const drawEdge = silhouette || crease || joint;
     if (drawEdge || (bodies?.length && (open || turning)))
-      strokeModelEdge(start, end, first.component, silhouette ? 0 : 0.52, false, bodies, !drawEdge);
+      strokeModelEdge(start, end, first.component, silhouette ? 0 : 0.52, { bodies, outlineOnly: !drawEdge });
   }
   if (pens.curves)
     for (const { a, b, component, texture } of geometry.lines)
-      strokeModelEdge(a, b, component, 1, texture);
+      strokeModelEdge(a, b, component, 1, { texture, minimumLength: 0 });
   const palette = drawingPenPalette(pens, geometry.model),
     { ranked, layerIndices } = palette,
     count = ranked.length,

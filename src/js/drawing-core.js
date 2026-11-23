@@ -126,7 +126,7 @@ function clipDrawingLine(start, end, planes) {
 }
 
 // The depth buffer hides linework behind the geometry while the strokes remain vector paths.
-function rasterDrawingFace(depth, width, height, a, b, c, pixels, color, outline, body) {
+function rasterDrawingFace(depth, width, height, a, b, c, pixels, color, outline, body, occlusion) {
   const bx = b[0] - a[0],
     by = b[1] - a[1],
     cx = c[0] - a[0],
@@ -139,6 +139,7 @@ function rasterDrawingFace(depth, width, height, a, b, c, pixels, color, outline
     right = Math.min(width - 1, Math.ceil(Math.max(a[0], b[0], c[0]))),
     top = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1]))),
     bottom = Math.min(height - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+  let faceId = 0;
   for (let y = top; y <= bottom; y++) {
     const dy = y + 0.5 - a[1];
     for (let x = left; x <= right; x++) {
@@ -156,6 +157,16 @@ function rasterDrawingFace(depth, width, height, a, b, c, pixels, color, outline
       }
       if (z <= depth[i]) continue;
       depth[i] = z;
+      if (occlusion) {
+        if (faceId === 0) {
+          faceId = occlusion.faces.length;
+          occlusion.faces.push({
+            origin: a, ux: cy / denominator, uy: -cx / denominator,
+            vx: -by / denominator, vy: bx / denominator, dzB, dzC
+          });
+        }
+        occlusion.owners[i] = faceId;
+      }
       if (pixels) {
         const offset = i * 4;
         pixels[offset] = color[0];
@@ -183,7 +194,7 @@ function drawingFaceColor(face, sun, flat) {
   return face.color.map((channel) => (0.49 + 0.51 * channel * shade) * 255);
 }
 
-function rasterDrawingPolygon(depth, width, height, polygon, pixels, color, outline, body) {
+function rasterDrawingPolygon(depth, width, height, polygon, pixels, color, outline, body, occlusion) {
   for (let i = 1; i + 1 < polygon.length; i++)
     rasterDrawingFace(
       depth,
@@ -195,8 +206,31 @@ function rasterDrawingPolygon(depth, width, height, polygon, pixels, color, outl
       pixels,
       color,
       outline,
-      body
+      body,
+      occlusion
     );
+}
+
+function drawingFaceOccludes(face, x, y, closestVisibleDepth) {
+  if (!face) return false;
+  const { origin, ux, uy, vx, vy, dzB, dzC } = face;
+  const dx = x - origin[0], dy = y - origin[1];
+  const u = dx * ux + dy * uy, v = dx * vx + dy * vy;
+  const edgeEpsilon = 1e-7;
+  return u >= -edgeEpsilon && v >= -edgeEpsilon && u + v <= 1 + edgeEpsilon &&
+    origin[2] + u * dzB + v * dzC > closestVisibleDepth;
+}
+
+// Raster depth is measured at pixel centres. Test their faces at the stroke's exact XY so a
+// steep face does not hide its own edge. Nearby pixel centres capture both sides of a boundary.
+function drawingStrokeOccluded({ owners, faces }, width, x, y, closestVisibleDepth) {
+  const at = Math.floor(y - 0.5) * width + Math.floor(x - 0.5);
+  const topLeft = owners[at], topRight = owners[at + 1],
+    bottomLeft = owners[at + width], bottomRight = owners[at + width + 1];
+  return drawingFaceOccludes(faces[topLeft], x, y, closestVisibleDepth) ||
+    (topRight !== topLeft && drawingFaceOccludes(faces[topRight], x, y, closestVisibleDepth)) ||
+    (bottomLeft !== topLeft && drawingFaceOccludes(faces[bottomLeft], x, y, closestVisibleDepth)) ||
+    (bottomRight !== topLeft && drawingFaceOccludes(faces[bottomRight], x, y, closestVisibleDepth));
 }
 
 function drawingBoundary(owner, width, height, from, to, bodies) {
