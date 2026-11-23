@@ -12,13 +12,44 @@ const RHINO_CDN = 'https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/';
 const IMPORT_TRIANGLE_WARNING = 300000;
 const IMPORT_BODY_LIMIT = 65535;
 
-// Metres per model unit, keyed by rhino3dm's UnitSystem enum value.
-const RHINO_UNIT_METRES = {
-  1: 1e-6, 2: 1e-3, 3: 1e-2, 4: 1, 5: 1e3, 6: 2.54e-8, 7: 2.54e-5, 8: 0.0254, 9: 0.3048, 10: 1609.344,
-  12: 1e-10, 13: 1e-9, 14: 0.1, 15: 10, 16: 100, 17: 1e6, 18: 1e9, 19: 0.9144, 22: 1852
+// Metres per model unit from openNURBS, keyed by rhino3dm's UnitSystem enum value.
+const RHINO_UNITS = {
+  1: ['Microns', 1e-6],
+  2: ['Millimetres', 1e-3],
+  3: ['Centimetres', 1e-2],
+  4: ['Metres', 1],
+  5: ['Kilometres', 1e3],
+  6: ['Microinches', 2.54e-8],
+  7: ['Mils', 2.54e-5],
+  8: ['Inches', 0.0254],
+  9: ['Feet', 0.3048],
+  10: ['Miles', 1609.344],
+  12: ['Angstroms', 1e-10],
+  13: ['Nanometres', 1e-9],
+  14: ['Decimetres', 0.1],
+  15: ['Dekametres', 10],
+  16: ['Hectometres', 100],
+  17: ['Megametres', 1e6],
+  18: ['Gigametres', 1e9],
+  19: ['Yards', 0.9144],
+  20: ['Printer points', 0.0254 / 72],
+  21: ['Printer picas', 0.0254 / 6],
+  22: ['Nautical miles', 1852],
+  23: ['Astronomical units', 1.4959787e11],
+  24: ['Light-years', 9.4607304725808e15],
+  25: ['Parsecs', 3.08567758e16]
 };
-// Header drop-down overrides.
-const UNIT_CHOICES = { mm: 1e-3, cm: 1e-2, m: 1, in: 0.0254, ft: 0.3048 };
+const UNIT_CHOICES = { mm: RHINO_UNITS[2], cm: RHINO_UNITS[3], m: RHINO_UNITS[4], in: RHINO_UNITS[8], ft: RHINO_UNITS[9] };
+
+function resolveModelUnits(choice, fileUnits, fileLabel = fileUnits?.[0] ?? null) {
+  const override = Object.hasOwn(UNIT_CHOICES, choice) ? UNIT_CHOICES[choice] : null;
+  const [label, metresPerUnit] = override ?? fileUnits ?? UNIT_CHOICES.m;
+  return {
+    label, metresPerUnit, fileLabel,
+    choice: override ? choice : 'auto',
+    source: override ? 'override' : fileUnits ? 'file' : 'assumed'
+  };
+}
 
 // --- Loading the rhino3dm library -------------------------------------------------------------
 
@@ -144,7 +175,7 @@ class ModelBuilder {
   }
 
   // Convert to the drawing coordinate system and return the model the workspace consumes.
-  finish() {
+  finish(units) {
     let min = [Infinity, Infinity, Infinity],
       max = [-Infinity, -Infinity, -Infinity];
     for (const object of this.objects)
@@ -168,7 +199,8 @@ class ModelBuilder {
     return {
       name: this.name,
       reach: Math.max(reach, 1),
-      height: Math.max(max[2] - min[2], 0.5),
+      height: max[2] - min[2],
+      units,
       layers: this.layers.filter((layer) => layer.triangles || layer.segments),
       warnings: this.warnings,
       triangleCount: this.triangleCount,
@@ -241,17 +273,20 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
   const doc = r.File3dm.fromByteArray(bytes);
   if (!doc) throw Error('This does not look like a Rhino .3dm file.');
   const builder = new ModelBuilder(name);
+  let units;
   try {
-    // Units
-    let metres = 1;
-    if (UNIT_CHOICES[unitChoice]) metres = UNIT_CHOICES[unitChoice];
-    else {
-      const settings = doc.settings();
-      const unit = settings.modelUnitSystem.value;
-      dispose(settings);
-      if (RHINO_UNIT_METRES[unit]) metres = RHINO_UNIT_METRES[unit];
-      else builder.warn('The file does not state its units, so metres were assumed. Use "Model units" to change this.');
+    const settings = doc.settings();
+    const code = settings.modelUnitSystem?.value;
+    dispose(settings);
+    const fileUnits = RHINO_UNITS[code];
+    const customUnits = code === r.UnitSystem.CustomUnits.value;
+    units = resolveModelUnits(unitChoice, fileUnits, customUnits ? 'Custom units' : fileUnits?.[0]);
+    if (units.source === 'assumed') {
+      builder.warn(customUnits
+        ? 'The Rhino reader cannot read the custom unit conversion. Metres are assumed. Use Model units to set the units if known.'
+        : 'The file has no recognised model units. Metres are assumed. Use Model units to set the units if known.');
     }
+    const metres = units.metresPerUnit;
     const scale = (p) => [p[0] * metres, p[1] * metres, p[2] * metres];
 
     // Layers. Visibility accounts for hidden parent layers.
@@ -465,14 +500,15 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
   } finally {
     dispose(doc);
   }
-  return registerComponents(builder.finish());
+  return registerComponents(builder.finish(units));
 }
 
 // --- Wavefront (.obj) -------------------------------------------------------------------------
 
 // Parse an OBJ file. Groups ('g'/'o'/'usemtl') become layers; the file is treated as Z-up like Rhino.
 function importObj(text, name, unitChoice = 'auto') {
-  const metres = UNIT_CHOICES[unitChoice] || 1,
+  const units = resolveModelUnits(unitChoice),
+    metres = units.metresPerUnit,
     builder = new ModelBuilder(name),
     vertices = [];
   let layer = builder.layer('OBJ'),
@@ -500,7 +536,7 @@ function importObj(text, name, unitChoice = 'auto') {
   }
   if (!builder.triangleCount && !builder.layers.some((l) => l.segments))
     throw Error('No faces or lines were found in this OBJ file.');
-  return registerComponents(builder.finish());
+  return registerComponents(builder.finish(units));
 }
 
 // --- Sample -----------------------------------------------------------------------------------
@@ -588,7 +624,7 @@ function sampleModel() {
   }
   plate(roof, 'Roof', envelopeHeight - slabDepth, envelopeHeight);
   builder.warn('Concept sample with approximate floors, façade divisions and fictional studios.');
-  const model = builder.finish();
+  const model = builder.finish({ ...resolveModelUnits('auto'), source: 'sample' });
   model.defaultStoreyHeight = storeyHeight;
   model.studioFloorCount = levelCount;
   model.studioSlabsVisible = () => builder.layers[slabs].visible;

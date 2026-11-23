@@ -50,8 +50,10 @@
   function setImportBusy(value) {
     busy = value;
     workspace.setAttribute('aria-busy', String(value));
-    for (const control of [$('openFile'), $('openFileZone'), $('loadSample'), $('loadSampleZone'), unitSelect])
+    workspace.inert = value;
+    for (const control of [$('openFile'), $('openFileZone'), $('loadSample'), $('loadSampleZone')])
       control.disabled = value;
+    unitSelect.disabled = value || !lastFile;
   }
   function loadingModel(message, done, total) {
     say(message, 'loading');
@@ -67,23 +69,41 @@
   const yieldForImport = () => new Promise((resolve) => setTimeout(resolve, 20));
 
   // Hand a finished model to the workspace and rebuild the layer list.
-  function show(model, label, identity) {
+  function show(model, label, identity, reinterpret = false) {
+    const unitRatio = reinterpret ? model.units.metresPerUnit / current.units.metresPerUnit : 1;
+    if (reinterpret) {
+      const hiddenLayers = new Set(current.layers.filter((layer) => !layer.visible).map((layer) => layer.key));
+      for (const layer of model.layers) layer.visible = !hiddenLayers.has(layer.key);
+    }
     current = model;
     controls.inert = false;
     dropZone.hidden = true;
     fileName.hidden = false;
     fileName.textContent = label;
     fileName.title = label;
-    openDrawingWorkspace(model, true, identity);
+    openDrawingWorkspace(model, !reinterpret, identity);
     buildLayerList(model);
-    if (viewer.ok) {
+    if (reinterpret) {
+      if (viewer.ok) viewer.setModel(model, false, unitRatio);
+    } else if (viewer.ok) {
       for (const id of ['modeNav', 'modeDraw']) $(id).disabled = false;
       setMode('nav');
       viewer.setModel(model, true);
       if (Number.isInteger(model.initialAxonometric)) viewer.axo(model.initialAxonometric);
       appliedRevision = viewer.revision;
     } else setMode('draw');
-    const summary = `${label}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${model.height.toFixed(1)} m tall.`;
+    const { units } = model;
+    unitSelect.value = units.choice;
+    const unitSource = { file: 'from file', override: 'override', assumed: 'assumed', sample: 'sample' }[units.source];
+    const unitNote = `${units.label} (${unitSource})`;
+    const fileNote = units.source !== 'file' && units.fileLabel ? ` File specifies ${units.fileLabel.toLowerCase()}.` : '';
+    const unitsUsed = $('modelUnitsUsed');
+    unitsUsed.textContent = `Using ${unitNote.toLowerCase()}.${fileNote}`;
+    unitsUsed.hidden = false;
+    const height = model.height > 0 && model.height < 1
+      ? `${(model.height * 1000).toLocaleString(undefined, { maximumSignificantDigits: 4 })} mm`
+      : `${model.height.toFixed(1)} m`;
+    const summary = `${label}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${height} tall · ${unitNote}.`;
     if (model.warnings.length) say(summary, 'warn', model.warnings);
     else say(summary);
   }
@@ -120,10 +140,10 @@
   }
 
   // Read a user-chosen .3dm or .obj file.
-  async function openFile(file) {
+  async function openFile(file, { unitChoice = 'auto', reinterpret = false } = {}) {
     if (busy || !file) return;
     setImportBusy(true);
-    lastFile = file;
+    unitSelect.value = unitChoice;
     const base = file.name.replace(/\.[^.]+$/, '');
     try {
       let model;
@@ -132,20 +152,22 @@
         const contents = await file.text();
         loadingModel('Building geometry…');
         await yieldForImport();
-        model = importObj(contents, base, unitSelect.value);
+        model = importObj(contents, base, unitChoice);
       } else if (/\.3dm$/i.test(file.name)) {
         loadingModel('Loading the Rhino reader…');
         const rhino = await timed(loadRhino(), 45000);
         loadingModel('Reading ' + file.name + '…');
         const bytes = new Uint8Array(await file.arrayBuffer());
-        model = await importRhino(rhino, bytes, base, unitSelect.value, (done, total) =>
+        model = await importRhino(rhino, bytes, base, unitChoice, (done, total) =>
           loadingModel(`Building geometry… ${done} of ${total} objects`, done, total)
         );
       } else throw Error('Choose a Rhino .3dm file or an .obj file.');
       loadingModel('Preparing the model view…');
       await yieldForImport();
-      show(model, file.name, JSON.stringify([file.name, file.size, file.lastModified]));
+      show(model, file.name, JSON.stringify([file.name, file.size, file.lastModified]), reinterpret);
+      lastFile = file;
     } catch (error) {
+      unitSelect.value = current?.units.choice ?? 'auto';
       console.error('Import failed', error);
       say(
         'Could not open ' + file.name + ': ' + (error && error.message ? error.message : error),
@@ -162,7 +184,6 @@
   async function openSample() {
     if (busy) return;
     setImportBusy(true);
-    lastFile = null;
     try {
       loadingModel('Building the sample model…');
       await yieldForImport();
@@ -170,6 +191,7 @@
       loadingModel('Preparing the model view…');
       await yieldForImport();
       show(model, model.name, 'sample:valentine');
+      lastFile = null;
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');
@@ -267,7 +289,7 @@
   };
   // Changing the unit re-reads the last file so the new scale applies.
   unitSelect.onchange = () => {
-    if (lastFile) openFile(lastFile);
+    if (lastFile) openFile(lastFile, { unitChoice: unitSelect.value, reinterpret: true });
   };
 
   // Drag and drop anywhere on the page.

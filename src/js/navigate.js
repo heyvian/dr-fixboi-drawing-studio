@@ -92,7 +92,7 @@ const viewer = (() => {
   // --- Model data --------------------------------------------------------------------------------
   // Upload the visible solid, glass and line buffers (10 floats per vertex: position, normal, colour)
   // and measure them. Called for a new model and whenever layer visibility changes.
-  function setModel(model, resetView) {
+  function setModel(model, resetView, unitRatio = 1) {
     for (const buffer of buffers) gl.deleteBuffer(buffer.id);
     buffers = [];
     const mesh = model.assemble(),
@@ -132,7 +132,14 @@ const viewer = (() => {
       camera.az = HOME.az;
       camera.el = HOME.el;
       zoomExtents(false);
-    } else draw();
+    } else {
+      if (unitRatio !== 1) {
+        focus = focus.map((coordinate) => coordinate * unitRatio);
+        camera.target = camera.target.map((coordinate) => coordinate * unitRatio);
+        camera.halfHeight *= unitRatio;
+      }
+      draw();
+    }
   }
 
   // --- Linework -----------------------------------------------------------------------------------

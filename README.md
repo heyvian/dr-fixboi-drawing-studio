@@ -44,9 +44,9 @@ Tips: in Rhino, run `Mesh` or `Render` on Breps and save, so render meshes are s
 
 - **Flat rendering** uses the Rhino display colours directly for the visible surface fills. Hybrid uses the same colours with a lighter shaded treatment. The importer uses layer colours, explicit object colours, material diffuse colours and parent block colours where available.
 - **Layers** become the layers list; untick one to leave it out. "Outlines follow" switches outlines between layers and objects.
-- **Units** come from the file's unit system; the header select overrides them. Unset units are assumed metres.
+- **Units** start at **From file** each time you open a model. The File menu shows the units in use and can override them for the current file. Rhino imports read model-space units. OBJ files and Rhino files without recognised units default to metres.
 - **Orientation**: Rhino Z is up, and Rhino +Y is drawn as north. The model is centred and its lowest point is the ground.
-- **OBJ** files are treated as Z-up like Rhino and use the same unit select.
+- **OBJ** files are treated as Z-up like Rhino.
 - **Storey height** (default 3.5 m) sets floor plan levels.
 
 ## Layout

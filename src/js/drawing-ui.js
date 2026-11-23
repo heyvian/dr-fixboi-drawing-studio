@@ -194,12 +194,21 @@ const openDrawingWorkspace = (() => {
     return {
       settings,
       base,
+      metresPerUnit: sourceModel.units.metresPerUnit,
       titles: titleFields.map((field) => field.value),
       hiddenLayers: sourceModel.layers.filter((layer) => !layer.visible).map((layer) => layer.key)
     };
   }
+  function rescaleCapturedView(ratio) {
+    if (!base || ratio === 1) return;
+    base.target = base.target.map((coordinate) => coordinate * ratio);
+    base.halfWidth *= ratio;
+    base.halfHeight *= ratio;
+  }
   function restoreSnapshot(snapshot) {
     base = structuredClone(snapshot.base);
+    if (Number.isFinite(snapshot.metresPerUnit) && snapshot.metresPerUnit > 0)
+      rescaleCapturedView(sourceModel.units.metresPerUnit / snapshot.metresPerUnit);
     // Sheets saved before the projection toolbar used independent compass directions.
     const { viewHeading, viewHeadings, ...stored } = structuredClone(snapshot.settings);
     settings = {
@@ -1699,6 +1708,8 @@ const openDrawingWorkspace = (() => {
 
   // Called by the app with each imported (or re-filtered) model. 'fresh' marks a different file.
   function load(model, fresh = true, identity) {
+    if (!fresh && sourceModel)
+      rescaleCapturedView(model.units.metresPerUnit / sourceModel.units.metresPerUnit);
     sourceModel = model;
     geometry = null;
     if (fresh) {

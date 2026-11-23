@@ -147,6 +147,7 @@ summary::marker { color: var(--accent); }
   border-block-start: 1px solid var(--line);
 }
 .file-menu-panel select { min-height: 30px; font: inherit; }
+.file-menu-panel #modelUnitsUsed { margin: 0 3px; }
 .app-header .file-menu-panel #openCredits {
   justify-self: start;
   min-height: 28px;

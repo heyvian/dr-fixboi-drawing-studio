@@ -292,6 +292,8 @@ const { makeFixture } = require('./fixture');
     'f 1 2 3 4\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n';
   await page.setInputFiles('#fileInput', { name: 'smoke.obj', mimeType: 'text/plain', buffer: Buffer.from(obj) });
   await page.waitForFunction(() => document.querySelector('#importStatus').textContent.includes('smoke.obj:'));
+  assert.strictEqual(await page.inputValue('#unitSelect'), 'auto');
+  assert.match(await page.locator('#importStatus').textContent(), /Metres \(assumed\)/);
   await page.click('#modeDraw');
   await page.waitForFunction(() => {
     const sheet = document.querySelector('#drawingSheet');
@@ -351,12 +353,37 @@ const { makeFixture } = require('./fixture');
   await page.locator('#drawingSheet [data-layer="Key outlines"] path').waitFor();
   await page.uncheck('#drawingComponentOutlines');
 
+  const elevationOnPaper = async () => {
+    await page.locator('#exportDrawing:enabled').waitFor();
+    return page.locator('#drawingSheet').evaluate((sheet) => ({
+      ratio: Number(sheet.querySelector('[data-scale-ratio]').dataset.scaleRatio),
+      height: sheet.querySelector('[data-layer="Artwork"]').getBBox().height * 400 / sheet.viewBox.baseVal.height
+    }));
+  };
+  await page.selectOption('#drawingScale', '50');
+  let elevation = await elevationOnPaper();
+  assert.strictEqual(elevation.ratio, 50);
+  assert(Math.abs(elevation.height - 120) < 0.05, 'a six-metre elevation measures 120 mm at 1:50');
+  await page.click('#fileMenuToggle');
+  await page.selectOption('#unitSelect', 'ft');
+  await page.waitForFunction(() => document.querySelector('#importStatus').textContent.includes('Feet (override)'));
+  await page.locator('#fileMenuToggle').press('Escape');
+  assert.strictEqual(await page.inputValue('#drawingView'), 'elevation', 'reinterpreting units preserves the drawing view');
+  elevation = await elevationOnPaper();
+  assert.strictEqual(elevation.ratio, 50);
+  assert(Math.abs(elevation.height - 36.576) < 0.05, 'a six-foot elevation measures 36.576 mm at 1:50');
+  await page.selectOption('#drawingScale', 'auto');
+  elevation = await elevationOnPaper();
+  assert(Math.abs(elevation.height - 1828.8 / elevation.ratio) < 0.05, 'Auto fit uses the newly interpreted feet');
+
   if (process.env.APP_URL) {
     const { bytes } = await makeFixture();
     const reader = page.waitForResponse((response) => response.url().endsWith('/vendor/rhino3dm/rhino3dm.wasm'));
     await page.setInputFiles('#fileInput', { name: 'fixture.3dm', mimeType: 'application/octet-stream', buffer: Buffer.from(bytes) });
     assert((await reader).ok(), 'the browser loaded the local Rhino WebAssembly reader');
     await page.waitForFunction(() => document.querySelector('#importStatus').textContent.includes('12 triangles'));
+    assert.strictEqual(await page.inputValue('#unitSelect'), 'auto', 'a new file clears the old override');
+    assert.match(await page.locator('#importStatus').textContent(), /3\.0 m tall · Millimetres \(from file\)/);
     await page.click('#modeDraw');
     await page.selectOption('#drawingRendering', 'flat');
     await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3);

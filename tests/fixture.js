@@ -6,6 +6,7 @@ async function makeFixture() {
   const r = await rhino3dm();
   const doc = new r.File3dm();
   doc.settings().modelUnitSystem = r.UnitSystem.Millimeters;
+  doc.settings().pageUnitSystem = r.UnitSystem.Inches;
   const layer = (name, color, visible = true, plotWeight = 0) => {
     const l = new r.Layer();
     l.name = name;

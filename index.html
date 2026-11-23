@@ -39,7 +39,7 @@
             <button type="button" id="loadSample">Load sample</button>
             <label class="drawing-view-field">
               <span>Model units</span>
-              <select id="unitSelect" title="Units used when a file does not state them, or to override them">
+              <select id="unitSelect" aria-describedby="modelUnitsUsed" disabled>
                 <option value="auto">From file</option>
                 <option value="mm">Millimetres</option>
                 <option value="cm">Centimetres</option>
@@ -48,6 +48,7 @@
                 <option value="ft">Feet</option>
               </select>
             </label>
+            <p id="modelUnitsUsed" class="hint" hidden></p>
             <button type="button" id="openCredits">Credits</button>
             <p class="file-menu-coffee">Found this useful? Buy me a coffee.</p>
           </div>
