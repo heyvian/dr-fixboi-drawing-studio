@@ -1,10 +1,10 @@
 /* Print / PDF output. The sheet prints at its paper size; the floor set prints one page per plan. */
-#floorPrintPages { display: none; }
+#drawingPrintPages { display: none; }
 @media print {
-  body.drawings-open.printing-floor-set #drawingsPhase { display: none !important; }
-  body.drawings-open.printing-floor-set #floorPrintPages { display: block; }
-  #floorPrintPages > svg { display: block; break-after: page; }
-  #floorPrintPages > svg:last-child { break-after: auto; }
+  body.drawings-open.printing-drawing #drawingsPhase { display: none !important; }
+  body.drawings-open.printing-drawing #drawingPrintPages { display: block; }
+  #drawingPrintPages > svg { display: block; break-after: page; }
+  #drawingPrintPages > svg:last-child { break-after: auto; }
 }
 @media print {
   body.drawings-open { display: block !important; height: auto !important; overflow: visible !important; background: white; }

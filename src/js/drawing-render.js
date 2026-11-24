@@ -97,8 +97,8 @@ function collectSectionContour(triangle, plane, contours, group) {
 }
 
 // Trace oriented closed contours per object. Opposite winding preserves openings in the fill.
-function sectionContourPaths(contours, clips) {
-  const paths = [];
+function sectionContours(contours, clips) {
+  const groups = [];
   const key = (point) => point.map((value) => Math.round(value * 10000)).join(',');
   for (const segments of contours.values()) {
     const outgoing = new Map();
@@ -128,12 +128,69 @@ function sectionContourPaths(contours, clips) {
       }
       if (!visited.has(vertex)) continue;
       const loop = trimDrawingFace(positions.slice(visited.get(vertex)), clips);
-      if (loop.length >= 3)
-        loops.push(loop.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(3)} ${y.toFixed(3)}`).join('') + 'Z');
+      if (loop.length >= 3) loops.push(loop);
     }
-    if (loops.length) paths.push(loops.join(''));
+    if (loops.length) groups.push(loops);
   }
-  return paths;
+  return groups;
+}
+
+const sectionCoordinate = ([x, y]) => `${x.toFixed(3)} ${y.toFixed(3)}`;
+
+function sectionHatch(groups, spacing, [originX, originY], rising) {
+  const cos = Math.SQRT1_2, sin = rising ? -cos : cos;
+  const phase = mod(-sin * originX + cos * originY, spacing);
+  const rows = new Map();
+  for (const loops of groups) {
+    const intersections = new Map();
+    for (const loop of loops) {
+      const points = loop.map(([x, y]) => [cos * x + sin * y, -sin * x + cos * y]);
+      for (const [i, [ax, ay]] of points.entries()) {
+        const [bx, by] = points[(i + 1) % points.length];
+        const direction = Math.sign(by - ay);
+        if (!direction) continue;
+        // Half-open edges count a shared corner exactly once.
+        const first = Math.ceil((Math.min(ay, by) - phase) / spacing);
+        const end = Math.ceil((Math.max(ay, by) - phase) / spacing);
+        for (let row = first; row < end; row++) {
+          const t = (phase + row * spacing - ay) / (by - ay);
+          if (!intersections.has(row)) intersections.set(row, []);
+          intersections.get(row).push([ax + (bx - ax) * t, direction]);
+        }
+      }
+    }
+    for (const [row, events] of intersections) {
+      events.sort(([a], [b]) => a - b);
+      let winding = 0, start;
+      for (const [x, direction] of events) {
+        if (!winding) start = x;
+        winding += direction;
+        if (!winding && x - start > 0.001) {
+          if (!rows.has(row)) rows.set(row, []);
+          rows.get(row).push([start, x]);
+        }
+      }
+    }
+  }
+
+  const strokes = [];
+  for (const [row, spans] of rows) {
+    const y = phase + row * spacing;
+    const point = (x) => sectionCoordinate([cos * x - sin * y, sin * x + cos * y]);
+    // Union the intervals so overlapping solids share one continuous hatch.
+    spans.sort(([a], [b]) => a - b);
+    let [start, end] = spans[0];
+    for (let i = 1; i < spans.length; i++) {
+      const [low, high] = spans[i];
+      if (low > end + 0.001) {
+        strokes.push(`M${point(start)}L${point(end)}`);
+        start = low;
+      }
+      end = Math.max(end, high);
+    }
+    strokes.push(`M${point(start)}L${point(end)}`);
+  }
+  return strokes.join('');
 }
 
 // Project, crop and render the drawing on a physical sheet.
@@ -197,7 +254,8 @@ function renderDrawing(
   const optics = cutPlane && focalDistance
     ? sectionLensProjection(cutDepth, focalDistance, originX + midX * scale, originY + lensY * scale)
     : null;
-  const contours = cutPlane && sectionView.cutFill ? new Map() : null;
+  const treatment = sectionView?.cutTreatment ?? 'none';
+  const contours = cutPlane && treatment !== 'none' ? new Map() : null;
   for (const face of geometry.faces) {
     const triangle = face.vertices.map((index) => projected[index]);
     if (contours && face.cutGroup != null && (!face.glazing || !seeThrough))
@@ -248,7 +306,14 @@ function renderDrawing(
     { x: 0, y: -1, z: 0, level: -margin },
     { x: 0, y: 1, z: 0, level: margin + drawingHeight }
   ];
-  const cutFills = contours ? sectionContourPaths(contours, [...clips.filter((plane) => plane !== cutPlane), ...sheetEdges]) : [];
+  const capGroups = contours ? sectionContours(contours, [...clips.filter((plane) => plane !== cutPlane), ...sheetEdges]) : [];
+  const cutFills = capGroups.map((loops) => loops.map((loop) => `M${loop.map(sectionCoordinate).join('L')}Z`).join(''));
+  const hatchSpacing = sectionView?.hatchSpacing * pixelsPerMillimetre;
+  let cutHatch = '';
+  if (capGroups.length && hatchSpacing > 0 && treatment !== 'solid') {
+    cutHatch = sectionHatch(capGroups, hatchSpacing, [originX, originY], true);
+    if (treatment === 'crosshatch') cutHatch += sectionHatch(capGroups, hatchSpacing, [originX, originY], false);
+  }
   function strokeVisible(startPoint, endPoint, collect, { minimumLength = 0.35, frontCut = false } = {}) {
     const paperLine = clipDrawingLine(
       optics ? optics.project(startPoint) : startPoint,
@@ -289,7 +354,7 @@ function renderDrawing(
     strokeVisible(a, b, (command, from, to) => {
       const target = optics && (from[2] + to[2]) / 2 < -1e-7 ? recedingSection : section;
       target.push(command);
-    }, { frontCut: Boolean(optics && frontCut) });
+    }, { frontCut: frontCut && Boolean(optics || cutFills.length) });
   function strokeModelEdge(a, b, component, detail, { texture = false, bodies, outlineOnly, minimumLength } = {}) {
     const clipped = clipDrawingLine(projected[a], projected[b], clips);
     if (clipped)
@@ -407,6 +472,7 @@ function renderDrawing(
     ...joinPaths(front),
     perspective: receding && joinPaths(receding),
     cutFills,
+    cutHatch,
     groundLine,
     pens,
     palette,

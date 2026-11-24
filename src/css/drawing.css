@@ -132,7 +132,18 @@
 .drawing-view-box { display: grid; gap: 11px; justify-items: start; padding: 9px; }
 .drawing-view-box > label { width: 100%; }
 .drawing-section-view { display: grid; gap: 8px; width: 100%; }
-.drawing-section-view .check, .drawing-section-view .hint, .drawing-section-view input[type='range'] { margin: 0; }
+.drawing-section-view .hint, .drawing-section-view input[type='range'] { margin: 0; }
+.drawing-cut-style {
+ display: grid;
+ gap: 8px;
+ width: 100%;
+ min-inline-size: 0;
+ margin: 0;
+ padding: 5px 8px 8px;
+ border: 1px solid var(--line);
+}
+.drawing-cut-fields { display: flex; gap: 12px; }
+.drawing-cut-fields input[type='number'] { width: 7ch; }
 .drawing-view-box .orientation-help { width: 100%; padding-block: 9px; border-block: 1px solid var(--line); }
 .drawing-view-box .orientation-help .hint { margin: 5px 0 0; }
 .nav-view-box {

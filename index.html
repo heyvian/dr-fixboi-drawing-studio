@@ -169,8 +169,24 @@
                 <input id="drawingPerspectiveFade" type="range" min="0" max="100" value="55" />
                 <p class="hint">The cut stays at the sheet scale.</p>
               </div>
-              <label class="check"><input id="drawingCutFill" type="checkbox" /> Solid black cut fill</label>
             </div>
+            <fieldset class="drawing-cut-style" id="drawingCutStyle" hidden>
+              <legend>Cut solids</legend>
+              <label class="drawing-view-field">Treatment
+                <select id="drawingCutTreatment">
+                  <option value="none">None</option>
+                  <option value="solid">Solid fill</option>
+                  <option value="diagonal">Diagonal hatch</option>
+                  <option value="crosshatch">Crosshatch</option>
+                </select>
+              </label>
+              <div class="drawing-cut-fields" id="drawingCutFields" hidden>
+                <label class="drawing-view-field">Cut colour <input id="drawingCutColor" type="color" /></label>
+                <label class="drawing-view-field" id="drawingHatchField" hidden>Spacing (mm)
+                  <input id="drawingHatchSpacing" type="number" min="0.5" max="20" step="0.1" />
+                </label>
+              </div>
+            </fieldset>
             <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
             <label id="drawingOrbitField" class="drawing-orbit" hidden
               >Horizontal orbit <output id="drawingOrbitAngle"></output>
@@ -448,7 +464,7 @@
             <div class="toolbar-group export-tools" role="group" aria-label="Export and print">
               <button type="button" class="primary" id="exportDrawing" aria-haspopup="dialog" aria-controls="svgExportDialog" disabled>Export SVG</button>
               <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
-              <button type="button" id="printDrawing" disabled>Print / PDF</button>
+              <button type="button" id="printDrawing" title="Print the current sheet or save it as a vector PDF" disabled>Print / PDF</button>
             </div>
           </div>
           <p class="hint" id="drawingStatus" role="status">Open a Rhino file to begin.</p>
@@ -471,7 +487,7 @@
         </div>
       </section>
     </main>
-    <div id="floorPrintPages" aria-hidden="true"></div>
+    <div id="drawingPrintPages" aria-hidden="true"></div>
     <dialog id="svgExportDialog" aria-labelledby="svgExportTitle">
       <form id="svgExportForm" method="dialog">
         <h2 id="svgExportTitle">Export SVG</h2>

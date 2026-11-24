@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const renderer = ['util.js', 'drawing-core.js', 'drawing-render.js']
   .map((file) => fs.readFileSync(path.join(__dirname, '..', 'src', 'js', file), 'utf8'))
   .join('\n');
-const { drawingPens, renderDrawing } = vm.runInNewContext(renderer + '\n({ drawingPens, renderDrawing });');
+const { drawingPens, renderDrawing, sectionHatch } = vm.runInNewContext(renderer + '\n({ drawingPens, renderDrawing, sectionHatch });');
 
 function drawSteepFace({ cover = false, segments = 1 } = {}) {
   // From this direction the depth of the face changes by much more than the tolerance in a pixel.
@@ -55,13 +55,13 @@ const points = [
 const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
   .flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]])
   .map((vertices) => ({ vertices, body: 1, cutGroup: 0, glazing: false }));
-function drawSection(lens, horizontal = false) {
+function drawSection(lens, horizontal = false, cutTreatment = 'solid', denominator = 50) {
   return renderDrawing(
     { points, faces, lines: [{ a: 8, b: 9, component: 'Curve' }], edges: [] },
     { az: Math.PI / 2, el: horizontal ? Math.PI / 2 : 0 },
     [horizontal ? { normal: [0, 1, 0], offset: 1.5 } : { normal: [0, 0, 1], offset: 0 }],
-    { width: 11, height: 8.5 }, 50, false, { x: 0, y: 0, ground: false, center: true },
-    'linework', drawingPens({ widths: [0.5] }), null, null, { planeIndex: 0, lens, cutFill: true }
+    { width: 11, height: 8.5 }, denominator, false, { x: 0, y: 0, ground: false, center: true },
+    'linework', drawingPens({ widths: [0.5] }), null, null, { planeIndex: 0, lens, cutTreatment, hatchSpacing: 2 }
   );
 }
 const orthographic = drawSection(0);
@@ -74,5 +74,31 @@ assert(wideAngle.perspective.ink[0].startsWith('M'), 'the visible line behind th
 assert.equal(wideAngle.cutFills[0], orthographic.cutFills[0]);
 assert.match(wideAngle.cutFills[0], /^M.*Z$/);
 assert(drawSection(35, true).perspective, 'horizontal cuts support plan perspective');
+assert.equal(orthographic.cutHatch, '', 'a solid fill has no hatch strokes');
+
+function hatchStrokes(path) {
+  return path.split('M').filter(Boolean).map((line) => line.split('L').map((point) => point.split(' ').map(Number)));
+}
+
+const outer = [[0, 0], [12, 0], [12, 12], [0, 12]];
+const opening = [[4, 4], [4, 8], [8, 8], [8, 4]];
+const throughOpening = hatchStrokes(sectionHatch([[outer, opening]], 2, [0, 0], false));
+assert.equal(throughOpening.filter(([[x, y]]) => x === y).length, 2, 'the hatch passes on both sides of the opening');
+for (const [[ax, ay], [bx, by]] of throughOpening) {
+  const insideOpening = (x, y) => x > 4.001 && x < 7.999 && y > 4.001 && y < 7.999;
+  assert(!Array.from({ length: 11 }, (_, i) => insideOpening(ax + (bx - ax) * i / 10, ay + (by - ay) * i / 10)).some(Boolean),
+    'no hatch stroke crosses the open void');
+}
+assert.equal(sectionHatch([[outer, opening], [outer, opening]], 2, [0, 0], false), sectionHatch([[outer, opening]], 2, [0, 0], false),
+  'overlapping sections do not double the hatch strokes');
+for (const denominator of [50, 100, 250]) {
+  const hatch = hatchStrokes(drawSection(35, false, 'crosshatch', denominator).cutHatch);
+  assert(hatch.some(([[ax, ay], [bx, by]]) => (bx - ax) * (by - ay) > 0), 'crosshatch has both diagonals');
+  const rising = hatch.filter(([[ax, ay], [bx, by]]) => (bx - ax) * (by - ay) < 0);
+  const offsets = rising.map(([[x, y]]) => (x + y) * Math.SQRT1_2).sort((a, b) => a - b);
+  const gaps = offsets.slice(1).map((offset, i) => offset - offsets[i]).filter((gap) => gap > 0.01);
+  assert(gaps.length > 0 && gaps.every((gap) => Math.abs(gap - 2 * 88 / 25.4) < 0.002),
+    '2 mm hatch spacing stays fixed on paper at every scale');
+}
 
 console.log('linework tests passed');

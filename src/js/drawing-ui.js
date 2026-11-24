@@ -84,12 +84,16 @@ const openDrawingWorkspace = (() => {
   for (const scale of DRAWING_SCALES)
     $('drawingScale').add(new Option(`1:${scale}`, String(scale)));
 
+  const cutTreatments = ['none', 'solid', 'diagonal', 'crosshatch'];
+  const validHatchSpacing = (spacing) => clamp(Math.round(spacing * 10) / 10, 0.5, 20);
   function sectionPreferences(saved = {}) {
     return {
       sectionProjection: saved.sectionProjection === 'perspective' ? 'perspective' : 'orthographic',
       sectionLens: Number.isFinite(saved.sectionLens) ? clamp(Math.round(saved.sectionLens), 8, 200) : 35,
       perspectiveFade: Number.isFinite(saved.perspectiveFade) ? clamp(saved.perspectiveFade, 0, 100) : 55,
-      cutFill: saved.cutFill === true
+      cutTreatment: cutTreatments.includes(saved.cutTreatment) ? saved.cutTreatment : saved.cutFill === true ? 'solid' : 'none',
+      cutColor: paintHex(saved.cutColor) || '#000000',
+      hatchSpacing: Number.isFinite(saved.hatchSpacing) ? validHatchSpacing(saved.hatchSpacing) : 2
     };
   }
   let settings = {
@@ -444,26 +448,60 @@ const openDrawingWorkspace = (() => {
     $('drawingSectionLensNumber').value = settings.sectionLens;
     lensSlider.value = lensPosition(settings.sectionLens);
     lensSlider.setAttribute('aria-valuetext', `${settings.sectionLens} millimetres`);
-    $('drawingCutFill').checked = settings.cutFill;
     syncPerspectiveFade();
+    syncCutStyle();
   }
-  function sectionView() {
-    const plane = currentPlane();
-    if (settings.view !== 'aligned' || !plane) return null;
+  function facingCutIndex(camera, planes) {
+    const { back } = orbitBasis(camera);
+    let index = -1, cutLimit = Infinity;
+    for (const [i, { normal, flip, offset }] of planes.entries()) {
+      const sign = flip ? -1 : 1;
+      if (sign * dot(normal, back) > 0.999999 && sign * offset < cutLimit) {
+        cutLimit = sign * offset;
+        index = i;
+      }
+    }
+    return index;
+  }
+  function sectionView(camera, planes) {
+    const plane = settings.view === 'aligned' ? currentPlane() : null;
+    const planeIndex = plane ? settings.planes.indexOf(plane) : facingCutIndex(camera, planes);
+    if (planeIndex < 0) return null;
     return {
-      planeIndex: settings.planes.indexOf(plane),
-      lens: settings.sectionProjection === 'perspective' ? settings.sectionLens : 0,
-      eyeLevel: plane.axis === 'vertical' ? 1.65 : null,
-      cutFill: settings.cutFill
+      planeIndex,
+      lens: plane && settings.sectionProjection === 'perspective' ? settings.sectionLens : 0,
+      eyeLevel: plane?.axis === 'vertical' ? 1.65 : null,
+      cutTreatment: settings.cutTreatment,
+      hatchSpacing: settings.hatchSpacing
     };
+  }
+  function syncCutStyle() {
+    const { cutTreatment, cutColor, hatchSpacing } = settings;
+    $('drawingCutStyle').hidden = !allPlans() && !sectionView(viewCamera(), drawingClips(settings.planes));
+    $('drawingCutTreatment').value = cutTreatment;
+    $('drawingCutColor').value = cutColor;
+    $('drawingHatchSpacing').value = hatchSpacing;
+    $('drawingCutFields').hidden = cutTreatment === 'none';
+    $('drawingHatchField').hidden = !['diagonal', 'crosshatch'].includes(cutTreatment);
   }
   sectionProjection.onchange = (event) => {
     settings.sectionProjection = event.target.value;
     syncSectionControls();
     queueDrawing();
   };
-  $('drawingCutFill').onchange = (event) => {
-    settings.cutFill = event.target.checked;
+  $('drawingCutTreatment').onchange = (event) => {
+    settings.cutTreatment = event.target.value;
+    syncCutStyle();
+    queueDrawing();
+  };
+  $('drawingCutColor').onchange = (event) => {
+    settings.cutColor = event.target.value;
+    queueDrawing();
+  };
+  $('drawingHatchSpacing').onchange = (event) => {
+    const { valueAsNumber } = event.target;
+    if (Number.isFinite(valueAsNumber)) settings.hatchSpacing = validHatchSpacing(valueAsNumber);
+    event.target.value = settings.hatchSpacing;
     queueDrawing();
   };
   $('drawingPerspectiveFade').oninput = (event) => {
@@ -607,11 +645,12 @@ const openDrawingWorkspace = (() => {
     if (mapBasis) indicator.prepend(drawingNorthArrow(mapBasis, end - 178, baseline - 4, ink));
   }
 
-  function renderPens(target, frame, identified = false) {
-    const { pens, ink, section, perspective, cutFills, heaviest, palette: { widths, colors } } = frame;
+  function renderPens(target, frame, identified = false, vector = false) {
+    const { pens, ink, section, perspective, cutFills, cutHatch, heaviest, palette: { widths, colors } } = frame;
     const strokes = perspective ? [[perspective, true], [frame, false]] : [[frame, false]];
-    const colorLayer = markSvgLayer(svgElement('g', {}), 'Colour wash');
-    if (frame.wash)
+    const colorLayer = markSvgLayer(svgElement('g', {}), vector ? 'Colour fills' : 'Colour wash');
+    if (vector) appendColourFills(colorLayer, frame.exportFills, 0);
+    else if (frame.wash)
       colorLayer.append(
         svgElement('image', { width: frame.width, height: frame.height, href: frame.wash })
       );
@@ -665,9 +704,18 @@ const openDrawingWorkspace = (() => {
       if (layer.hasChildNodes()) layers.push(layer);
     }
     if (cutFills?.length) {
-      const fills = markSvgLayer(svgElement('g', { fill: '#000000' }), 'Cut fill');
+      const hatched = settings.cutTreatment !== 'solid';
+      const fills = markSvgLayer(svgElement('g', { fill: hatched ? pens.paper : settings.cutColor }),
+        hatched ? 'Cut hatch backing' : 'Cut fill');
       for (const d of cutFills) fills.append(svgElement('path', { d, 'fill-rule': 'nonzero' }));
       layers.push(fills);
+      if (cutHatch) {
+        const hatch = markSvgLayer(svgElement('g', {}), 'Cut hatch');
+        const pattern = path(cutHatch, 0.15, settings.cutColor);
+        pattern.setAttribute('stroke-linecap', 'butt');
+        hatch.append(pattern);
+        layers.push(hatch);
+      }
     }
     if (section) {
       const cuts = markSvgLayer(svgElement('g', { 'data-weight-mm': widths[heaviest] }), 'Section cuts');
@@ -691,7 +739,7 @@ const openDrawingWorkspace = (() => {
       viewBox: `${margin} ${margin} ${width - margin * 2} ${drawingHeight}`,
       overflow: 'hidden'
     });
-    renderPens(area, frame);
+    renderPens(area, frame, false, print);
     const ink = sheetInk(frame.pens.paper),
       baseline = height - (print ? margin : Math.min(12, margin));
     const name = svgElement('text', {
@@ -783,7 +831,7 @@ const openDrawingWorkspace = (() => {
         { x: 0, y: 0, ground: false, center: true },
         settings.mode,
         settings.pens,
-        region
+        region, null, sectionView(camera, planes)
       );
       cropped ||= frame.cropped;
       populated ||= frame.populated;
@@ -838,7 +886,7 @@ const openDrawingWorkspace = (() => {
       const paper = paperDimensions();
       const camera = viewCamera(),
         clips = drawingClips(settings.planes),
-        section = sectionView(),
+        section = sectionView(camera, clips),
         framing = settings.view === 'nav' ? base : settings.view === 'aligned' ? null : lockedOrbit();
       const groundButton = $('groundDrawing');
       groundButton.disabled = Math.abs(Math.cos(camera.el)) <= 0.01;
@@ -1467,6 +1515,7 @@ const openDrawingWorkspace = (() => {
       ? mod(event.target.valueAsNumber, 360)
       : currentPlane().angle;
     event.target.value = currentPlane().angle;
+    syncCutStyle();
     queueDrawing();
   };
   function movePlane(value) {
@@ -1498,6 +1547,7 @@ const openDrawingWorkspace = (() => {
   $('drawingPlaneOffset').onchange = (event) => movePlane(event.target.valueAsNumber);
   $('flipDrawingPlane').onchange = (event) => {
     currentPlane().flip = event.target.checked;
+    syncCutStyle();
     queueDrawing();
   };
   $('alignDrawingPlane').onclick = () => {
@@ -1604,6 +1654,13 @@ const openDrawingWorkspace = (() => {
     target.append(item.cloneNode(true));
   }
 
+  function appendColourFills(target, makeFills, number) {
+    for (const { fill, d } of makeFills?.() || []) {
+      const id = `Fill_${number + 1}_${fill.slice(1)}`;
+      target.append(svgElement('path', { id, fill, d }));
+    }
+  }
+
   function vectorDrawingSheet({
     includePaper = exportPaper.checked,
     includeAnnotations = exportAnnotations.checked,
@@ -1635,12 +1692,8 @@ const openDrawingWorkspace = (() => {
           part.setAttribute('transform', placement);
           part.setAttribute('data-floor', number + 1);
         }
-        if (previewWash) {
-          for (const { fill, d } of makeFills?.() || []) {
-            const id = `Fill_${number + 1}_${fill.slice(1)}`;
-            part.append(svgElement('path', { id, fill, d }));
-          }
-        } else {
+        if (previewWash) appendColourFills(part, makeFills, number);
+        else {
           for (const item of template.children) exportArtwork(item, part, chunkSize, crop);
         }
         if (part.hasChildNodes()) layers.get(name).append(part);
@@ -1732,18 +1785,27 @@ const openDrawingWorkspace = (() => {
       bluebeamButton.removeAttribute('aria-busy');
     }
   };
-  printButton.onclick = () => {
-    const { width, height } = paperDimensions();
+  const drawingPrintPages = $('drawingPrintPages');
+  function printPages(sheets, { width, height }) {
+    drawingPrintPages.replaceChildren(...sheets);
+    document.body.classList.add('printing-drawing');
     pageStyle.textContent = `@page { size: ${width}in ${height}in; margin: 0; }`;
     window.print();
+  }
+  printButton.onclick = () => {
+    try {
+      printPages([vectorDrawingSheet({ includePaper: true, includeAnnotations: true, chunkSize: 256 })], paperDimensions());
+    } catch (error) {
+      console.error('Print preparation failed', error);
+      status.textContent = 'The sheet could not be prepared for printing.';
+    }
   };
   $('printFloorSet').onclick = async () => {
     if (!geometry || settings.view !== 'plan') return;
     const button = $('printFloorSet'),
-      pages = $('floorPrintPages'),
       paper = paperDimensions(),
       plans = floorPlans(),
-      model = sourceModel,
+      revision = renderRevision,
       camera = viewCamera(),
       { scale, glazing, mode, pens, bodies } = settings;
     printingFloorSet = button.disabled = true;
@@ -1753,7 +1815,7 @@ const openDrawingWorkspace = (() => {
       const sheets = [];
       for (const { planes, label } of plans) {
         await new Promise((resolve) => setTimeout(resolve, 0));
-        if (sourceModel !== model) return;
+        if (!currentRender(revision)) return;
         const frame = renderDrawing(
           geometryFor(camera, planes, glazing, bodies, pens),
           camera,
@@ -1763,18 +1825,17 @@ const openDrawingWorkspace = (() => {
           glazing,
           { x: 0, y: 0, ground: false, center: true },
           mode,
-          pens
+          pens,
+          null, null, sectionView(camera, planes)
         );
         const page = floorView(frame, sheetTitle() + ' \u00b7 ' + label, 0, 0, true);
         page.setAttribute('width', paper.width + 'in');
         page.setAttribute('height', paper.height + 'in');
+        page.setAttribute('viewBox', `0 0 ${paper.width * DRAWING_PIXELS_PER_INCH} ${paper.height * DRAWING_PIXELS_PER_INCH}`);
+        outlineDrawingLabels(page);
         sheets.push(page);
       }
-      if (panel.hidden) return;
-      pages.replaceChildren(...sheets);
-      document.body.classList.add('printing-floor-set');
-      pageStyle.textContent = `@page { size: ${paper.width}in ${paper.height}in; margin: 0; }`;
-      window.print();
+      if (currentRender(revision)) printPages(sheets, paper);
     } catch (error) {
       console.error('Floor set failed', error);
       status.textContent = 'The floor set could not be prepared.';
@@ -1786,8 +1847,8 @@ const openDrawingWorkspace = (() => {
   };
   window.addEventListener('afterprint', () => {
     pageStyle.textContent = '';
-    document.body.classList.remove('printing-floor-set');
-    $('floorPrintPages').replaceChildren();
+    document.body.classList.remove('printing-drawing');
+    drawingPrintPages.replaceChildren();
   });
   const fileStem = (text) => text.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'drawing';
   function clampPlanes() {
