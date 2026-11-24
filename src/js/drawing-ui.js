@@ -84,7 +84,16 @@ const openDrawingWorkspace = (() => {
   for (const scale of DRAWING_SCALES)
     $('drawingScale').add(new Option(`1:${scale}`, String(scale)));
 
+  function sectionPreferences(saved = {}) {
+    return {
+      sectionProjection: saved.sectionProjection === 'perspective' ? 'perspective' : 'orthographic',
+      sectionLens: Number.isFinite(saved.sectionLens) ? clamp(Math.round(saved.sectionLens), 8, 200) : 35,
+      perspectiveFade: Number.isFinite(saved.perspectiveFade) ? clamp(saved.perspectiveFade, 0, 100) : 55,
+      cutFill: saved.cutFill === true
+    };
+  }
   let settings = {
+      ...sectionPreferences(),
       view: 'axo',
       orbitLocked: true,
       azimuth: 5,
@@ -123,6 +132,7 @@ const openDrawingWorkspace = (() => {
       const previousElevation = ['front', 'side'].includes(saved.view);
       settings = {
         ...settings,
+        ...sectionPreferences(saved),
         view: previousElevation ? 'elevation' : viewNames.includes(saved.view) ? saved.view : 'axo',
         elevation: Number.isFinite(saved.elevation)
           ? mod(saved.elevation, 360)
@@ -214,6 +224,7 @@ const openDrawingWorkspace = (() => {
     settings = {
       orbitLocked: false,
       ...stored,
+      ...sectionPreferences(stored),
       viewHeadings: viewHeadings ?? (Number.isFinite(viewHeading)
         ? { axo: viewHeading, plan: viewHeading, elevation: viewHeading } : {}),
       pens: drawingPens(snapshot.settings.pens)
@@ -344,7 +355,7 @@ const openDrawingWorkspace = (() => {
       return { az: azimuth ?? compassAzimuth(settings.elevation), el: 0 };
     const plane = currentPlane();
     if (settings.view === 'aligned' && plane) {
-      if (plane.axis === 'horizontal') return { az: -Math.PI / 2, el: plane.flip ? -top : top };
+      if (plane.axis === 'horizontal') return { az: -Math.PI / 2, el: (plane.flip ? -1 : 1) * Math.PI / 2 };
       return { az: (plane.angle * Math.PI) / 180 + (plane.flip ? Math.PI : 0), el: 0 };
     }
     // Plan north is world +Z. Moving clockwise on the compass follows the plan axes.
@@ -399,6 +410,7 @@ const openDrawingWorkspace = (() => {
     sheet.classList.toggle('planset', allPlans());
     $('placeDrawingPlane').disabled = allPlans();
     $('centerDrawing').disabled = allPlans();
+    syncSectionControls();
   }
   $('syncViewOrientations').onclick = () => {
     const heading = compassHeading(viewCamera().az + (settings.view === 'plan' ? Math.PI : 0));
@@ -407,6 +419,83 @@ const openDrawingWorkspace = (() => {
     orientationStatus.textContent = 'Direction copied to Axonometric, Plan, and Elevation.';
     syncCompass();
     queueDrawing();
+  };
+
+  const sectionProjection = $('drawingSectionProjection'), lensSlider = $('drawingSectionLens');
+  const lensPosition = (mm) => Math.round(1000 * Math.log(mm / 8) / Math.log(200 / 8));
+  const lensMillimetres = (position) => Math.round(8 * (200 / 8) ** (position / 1000));
+  const lensStops = [8, 14, 20, 24, 28, 35, 50, 85, 105, 135, 200];
+  $('drawingLensTicks').replaceChildren(...lensStops.map((mm) => new Option(`${mm} mm`, lensPosition(mm))));
+  const perspectiveOpacity = () => (100 - settings.perspectiveFade) / 100;
+  function syncPerspectiveFade() {
+    const value = `${settings.perspectiveFade}%`;
+    $('drawingPerspectiveFade').value = settings.perspectiveFade;
+    $('drawingPerspectiveFade').setAttribute('aria-valuetext', value);
+    $('drawingPerspectiveFadeValue').value = value;
+  }
+  function syncSectionControls() {
+    const plane = currentPlane();
+    const kind = plane?.axis === 'horizontal' ? 'Plan' : 'Section';
+    $('drawingSectionView').hidden = settings.view !== 'aligned' || !plane;
+    $('drawingProjectionTitle').textContent = `${kind} projection`;
+    sectionProjection.options[1].text = `${kind} perspective`;
+    sectionProjection.value = settings.sectionProjection;
+    $('drawingSectionLensField').hidden = settings.sectionProjection !== 'perspective';
+    $('drawingSectionLensNumber').value = settings.sectionLens;
+    lensSlider.value = lensPosition(settings.sectionLens);
+    lensSlider.setAttribute('aria-valuetext', `${settings.sectionLens} millimetres`);
+    $('drawingCutFill').checked = settings.cutFill;
+    syncPerspectiveFade();
+  }
+  function sectionView() {
+    const plane = currentPlane();
+    if (settings.view !== 'aligned' || !plane) return null;
+    return {
+      planeIndex: settings.planes.indexOf(plane),
+      lens: settings.sectionProjection === 'perspective' ? settings.sectionLens : 0,
+      eyeLevel: plane.axis === 'vertical' ? 1.65 : null,
+      cutFill: settings.cutFill
+    };
+  }
+  sectionProjection.onchange = (event) => {
+    settings.sectionProjection = event.target.value;
+    syncSectionControls();
+    queueDrawing();
+  };
+  $('drawingCutFill').onchange = (event) => {
+    settings.cutFill = event.target.checked;
+    queueDrawing();
+  };
+  $('drawingPerspectiveFade').oninput = (event) => {
+    settings.perspectiveFade = event.target.valueAsNumber;
+    syncPerspectiveFade();
+    for (const stroke of sheetArtwork.querySelectorAll('[data-perspective-stroke]'))
+      stroke.setAttribute('stroke-opacity', perspectiveOpacity());
+    saveDrawing();
+  };
+  function setLens(mm) {
+    settings.sectionLens = clamp(Math.round(mm), 8, 200);
+    $('drawingSectionLensNumber').value = settings.sectionLens;
+    lensSlider.setAttribute('aria-valuetext', `${settings.sectionLens} millimetres`);
+    queueDrawing();
+  }
+  let lensPointer = false;
+  lensSlider.onpointerdown = () => { lensPointer = true; };
+  lensSlider.onpointercancel = lensSlider.onkeydown = () => { lensPointer = false; };
+  lensSlider.oninput = () => setLens(lensMillimetres(lensSlider.valueAsNumber));
+  lensSlider.onchange = () => {
+    const position = lensSlider.valueAsNumber;
+    const stop = lensStops.find((mm) => Math.abs(lensPosition(mm) - position) <= 18);
+    if (lensPointer && stop !== undefined) {
+      lensSlider.value = lensPosition(stop);
+      setLens(stop);
+    }
+    lensPointer = false;
+  };
+  $('drawingSectionLensNumber').onchange = (event) => {
+    const mm = event.target.valueAsNumber;
+    setLens(Number.isFinite(mm) ? mm : settings.sectionLens);
+    lensSlider.value = lensPosition(settings.sectionLens);
   };
 
   function floorPlans() {
@@ -519,15 +608,16 @@ const openDrawingWorkspace = (() => {
   }
 
   function renderPens(target, frame, identified = false) {
-    const { pens, ink, texture, section, heaviest, palette: { widths, colors } } = frame;
+    const { pens, ink, section, perspective, cutFills, heaviest, palette: { widths, colors } } = frame;
+    const strokes = perspective ? [[perspective, true], [frame, false]] : [[frame, false]];
     const colorLayer = markSvgLayer(svgElement('g', {}), 'Colour wash');
     if (frame.wash)
       colorLayer.append(
         svgElement('image', { width: frame.width, height: frame.height, href: frame.wash })
       );
     const textureLayer = markSvgLayer(svgElement('g', {}), 'Surface texture');
-    function path(d, width, stroke) {
-      return svgElement('path', {
+    function path(d, width, stroke, receding = false) {
+      const line = svgElement('path', {
         d,
         fill: 'none',
         stroke,
@@ -535,42 +625,56 @@ const openDrawingWorkspace = (() => {
         'stroke-linecap': 'round',
         'stroke-linejoin': 'round'
       });
+      if (receding) {
+        line.setAttribute('data-perspective-stroke', '');
+        line.setAttribute('stroke-opacity', perspectiveOpacity());
+      }
+      return line;
     }
     const layers = [colorLayer, textureLayer];
-    const firstInk = ink.findIndex(Boolean);
+    const firstInk = ink.findIndex((mark, i) => mark || perspective?.ink[i]);
     const order = widths.map((_, i) => i).sort((a, b) => widths[a] - widths[b]);
     for (const i of order) {
       const width = widths[i],
         stroke = colors[i];
-      if (texture[i]) textureLayer.append(path(texture[i], width, stroke));
+      for (const [paths, receding] of strokes)
+        if (paths.texture[i]) textureLayer.append(path(paths.texture[i], width, stroke, receding));
       const layer = markSvgLayer(
         svgElement('g', { 'data-weight-mm': width }),
         pens.mode === 'rhino' ? `Rhino print width · ${width} mm` : `Pen ${i + 1} · ${width.toFixed(2)} mm`
       );
-      if (ink[i]) {
-        const linework = path(ink[i], width, stroke);
-        if (identified && i === firstInk) linework.id = 'drawingLinework';
+      for (const [paths, receding] of strokes) {
+        if (!paths.ink[i]) continue;
+        const linework = path(paths.ink[i], width, stroke, receding);
+        if (identified && i === firstInk && !layer.hasChildNodes()) linework.id = 'drawingLinework';
         layer.append(linework);
       }
       layers.push(layer);
-      if (i === heaviest && section) {
-        const cuts = markSvgLayer(svgElement('g', { 'data-weight-mm': width }), 'Section cuts');
-        const cut = path(section, width, stroke);
-        if (identified) cut.id = 'drawingSections';
-        cuts.append(cut);
-        layers.push(cuts);
-      }
+      if (i === heaviest && perspective?.section)
+        layer.append(path(perspective.section, width, stroke, true));
     }
-    for (const [key, strokes] of [
-      ['componentOutlines', frame.componentInk],
-      ['silhouette', frame.silhouetteInk],
-      ['groundLine', frame.groundLine]
+    for (const [key, field] of [
+      ['componentOutlines', 'componentInk'],
+      ['silhouette', 'silhouetteInk'],
+      ['groundLine', 'groundLine']
     ]) {
-      if (!strokes) continue;
       const { width, color } = pens.detailPens[key];
       const layer = markSvgLayer(svgElement('g', { 'data-weight-mm': width }), DRAWING_DETAIL_PENS[key].label);
-      layer.append(path(strokes, width, color));
-      layers.push(layer);
+      for (const [paths, receding] of strokes)
+        if (paths[field]) layer.append(path(paths[field], width, color, receding));
+      if (layer.hasChildNodes()) layers.push(layer);
+    }
+    if (cutFills?.length) {
+      const fills = markSvgLayer(svgElement('g', { fill: '#000000' }), 'Cut fill');
+      for (const d of cutFills) fills.append(svgElement('path', { d, 'fill-rule': 'nonzero' }));
+      layers.push(fills);
+    }
+    if (section) {
+      const cuts = markSvgLayer(svgElement('g', { 'data-weight-mm': widths[heaviest] }), 'Section cuts');
+      const cut = path(section, widths[heaviest], colors[heaviest]);
+      if (identified) cut.id = 'drawingSections';
+      cuts.append(cut);
+      layers.push(cuts);
     }
     target.replaceChildren(...layers);
   }
@@ -734,6 +838,7 @@ const openDrawingWorkspace = (() => {
       const paper = paperDimensions();
       const camera = viewCamera(),
         clips = drawingClips(settings.planes),
+        section = sectionView(),
         framing = settings.view === 'nav' ? base : settings.view === 'aligned' ? null : lockedOrbit();
       const groundButton = $('groundDrawing');
       groundButton.disabled = Math.abs(Math.cos(camera.el)) <= 0.01;
@@ -754,7 +859,8 @@ const openDrawingWorkspace = (() => {
             settings.mode,
             settings.pens,
             null,
-            framing
+            framing,
+            section
           );
       if (!next || !currentRender(revision)) return;
       rendered = next;
@@ -764,9 +870,9 @@ const openDrawingWorkspace = (() => {
         viewLabel = allPlans()
           ? 'Floor plans'
           : settings.view === 'aligned'
-            ? currentPlane()?.axis === 'vertical'
-              ? 'Section'
-              : 'Plan section'
+            ? next.optics
+              ? `${currentPlane()?.axis === 'horizontal' ? 'Plan' : 'Section'} perspective · ${section.lens} mm`
+              : currentPlane()?.axis === 'vertical' ? 'Section' : 'Plan section'
             : $('drawingView').selectedOptions[0].text;
       // Keep SVG coordinates tied to the exact physical paper size. Only raster buffers round to pixels.
       const pageWidth = paper.width * DRAWING_PIXELS_PER_INCH,
@@ -1464,25 +1570,26 @@ const openDrawingWorkspace = (() => {
   sheet.addEventListener('click', (event) => {
     if (!placing || !rendered || !loading.hidden) return;
     const point = sheetPoint(event);
-    const { basis, width, height, depth, scale, originX, originY } = rendered;
+    const { basis, width, height, depth, scale, originX, originY, optics } = rendered;
     if (point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) return;
     const z = depth[Math.floor(point.y) * width + Math.floor(point.x)],
       normal = normalFor(currentPlane()),
       toward = dot(normal, basis.back);
-    if (!Number.isFinite(z) && Math.abs(toward) > 0.1) {
+    if (!Number.isFinite(z) && (optics || Math.abs(toward) > 0.1)) {
       status.textContent = 'Click a visible surface or enter an offset.';
       return;
     }
+    const [x, y, viewDepth] = optics ? optics.unproject([point.x, point.y, z]) : [point.x, point.y, z];
     const offset =
-      ((point.x - originX) / scale) * dot(normal, basis.right) -
-      ((point.y - originY) / scale) * dot(normal, basis.up) +
-      (Number.isFinite(z) ? z * toward : 0);
+      ((x - originX) / scale) * dot(normal, basis.right) -
+      ((y - originY) / scale) * dot(normal, basis.up) +
+      (Number.isFinite(viewDepth) ? viewDepth * toward : 0);
     stopPlacing();
     movePlane(offset - floorDatum(currentPlane()));
   });
 
   function exportArtwork(item, target, chunkSize, crop) {
-    if (item.localName === 'path') {
+    if (item.localName === 'path' && !item.hasAttribute('fill-rule')) {
       // The renderer packs disconnected strokes into each path. Bound the number of subpaths per
       // object so large sheets remain practical to select and edit in a vector application.
       const strokes = drawingExportStrokes(item.getAttribute('d'), crop, Number(item.getAttribute('stroke-width')) || 0);
@@ -1578,7 +1685,9 @@ const openDrawingWorkspace = (() => {
   }
 
   function drawingFilename(extension) {
-    const view = allPlans() ? 'floor-plans' : settings.view;
+    const view = allPlans() ? 'floor-plans' : rendered.optics
+      ? currentPlane()?.axis === 'horizontal' ? 'plan-perspective' : 'section-perspective'
+      : settings.view;
     const paper = customPapers.get(settings.paper);
     return `${fileStem(sheetTitle())}-${view}-${paper ? fileStem(paper.name) : settings.paper}-1-${rendered.denominator}.${extension}`;
   }

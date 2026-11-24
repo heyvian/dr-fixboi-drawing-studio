@@ -150,6 +150,27 @@
                 <option value="aligned" disabled>Aligned to clipping plane</option>
               </select>
             </label>
+            <div id="drawingSectionView" class="drawing-section-view" hidden>
+              <label class="drawing-view-field"><span id="drawingProjectionTitle">Section projection</span>
+                <select id="drawingSectionProjection">
+                  <option value="orthographic">Orthographic</option>
+                  <option value="perspective">Section perspective</option>
+                </select>
+              </label>
+              <div id="drawingSectionLensField" class="drawing-view-field" hidden>
+                <label class="drawing-offset" for="drawingSectionLensNumber">Lens (mm)
+                  <input id="drawingSectionLensNumber" type="number" min="8" max="200" step="1" value="35" />
+                </label>
+                <input id="drawingSectionLens" type="range" min="0" max="1000" aria-label="Perspective lens focal length" list="drawingLensTicks" />
+                <datalist id="drawingLensTicks"></datalist>
+                <label class="drawing-offset" for="drawingPerspectiveFade">Lighten beyond cut
+                  <output id="drawingPerspectiveFadeValue" for="drawingPerspectiveFade">55%</output>
+                </label>
+                <input id="drawingPerspectiveFade" type="range" min="0" max="100" value="55" />
+                <p class="hint">The cut stays at the sheet scale.</p>
+              </div>
+              <label class="check"><input id="drawingCutFill" type="checkbox" /> Solid black cut fill</label>
+            </div>
             <div id="drawingCompass" class="view-compass drawing-compass" role="group" aria-label="View direction compass"></div>
             <label id="drawingOrbitField" class="drawing-orbit" hidden
               >Horizontal orbit <output id="drawingOrbitAngle"></output>

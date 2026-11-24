@@ -68,6 +68,7 @@ function drawingGeometry(mesh, model) {
         color: data.slice(i + 6, i + 9),
         component: parts[group],
         body: bodyIds[group],
+        cutGroup: group,
         glazing: kind === 'glass'
       };
       faces.push(face);
@@ -326,27 +327,21 @@ function traceDrawingFills(pixels, width, height, resolution) {
 
 // Export uses a finer sampling grid than the interactive wash, with the same clipping and depth
 // rules. Its result is a set of editable SVG fills, one compound path per visible colour.
-function drawingExportFills(geometry, projected, seeThrough, clips, width, height, sun, flat) {
+function drawingExportFills(geometry, projected, seeThrough, clips, sheetEdges, width, height, sun, flat, optics) {
   const resolution = 2,
     columns = width * resolution,
     rows = height * resolution,
     pixels = new Uint8ClampedArray(columns * rows * 4),
-    depth = new Float32Array(columns * rows).fill(-Infinity),
-    points = projected.map(([x, y, z]) => [x * resolution, y * resolution, z]),
-    planes = clips.map(({ x, y, z, level }) => ({
-      x: x / resolution,
-      y: y / resolution,
-      z,
-      level
-    }));
+    depth = new Float32Array(columns * rows).fill(-Infinity);
   for (const face of geometry.faces) {
     if (face.glazing && seeThrough) continue;
-    const polygon = trimDrawingFace(
-      face.vertices.map((index) => points[index]),
-      planes
-    );
-    if (polygon.length >= 3)
-      rasterDrawingPolygon(depth, columns, rows, polygon, pixels, drawingFaceColor(face, sun, flat));
+    const clipped = trimDrawingFace(face.vertices.map((index) => projected[index]), clips);
+    if (clipped.length < 3) continue;
+    const polygon = trimDrawingFace(optics ? clipped.map(optics.project) : clipped, sheetEdges);
+    if (polygon.length >= 3) {
+      const points = polygon.map(([x, y, z]) => [x * resolution, y * resolution, z]);
+      rasterDrawingPolygon(depth, columns, rows, points, pixels, drawingFaceColor(face, sun, flat));
+    }
   }
   return traceDrawingFills(pixels, columns, rows, resolution);
 }

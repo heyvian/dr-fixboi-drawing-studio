@@ -47,4 +47,32 @@ assert(fine.every((stroke, i) => i === 0 || fine[i - 1][1] === stroke[0]), 'the 
 assert.equal(fine[0][0], uninterrupted[0][0]);
 assert.equal(fine.at(-1)[1], uninterrupted[0][1]);
 
+const points = [
+  [-3, 0, -4], [3, 0, -4], [3, 3, -4], [-3, 3, -4],
+  [-3, 0, 4], [3, 0, 4], [3, 3, 4], [-3, 3, 4],
+  [-1, 1, -3], [1, 1, -3]
+];
+const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+  .flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]])
+  .map((vertices) => ({ vertices, body: 1, cutGroup: 0, glazing: false }));
+function drawSection(lens, horizontal = false) {
+  return renderDrawing(
+    { points, faces, lines: [{ a: 8, b: 9, component: 'Curve' }], edges: [] },
+    { az: Math.PI / 2, el: horizontal ? Math.PI / 2 : 0 },
+    [horizontal ? { normal: [0, 1, 0], offset: 1.5 } : { normal: [0, 0, 1], offset: 0 }],
+    { width: 11, height: 8.5 }, 50, false, { x: 0, y: 0, ground: false, center: true },
+    'linework', drawingPens({ widths: [0.5] }), null, null, { planeIndex: 0, lens, cutFill: true }
+  );
+}
+const orthographic = drawSection(0);
+const wideAngle = drawSection(8);
+const telephoto = drawSection(200);
+assert.equal(wideAngle.section, orthographic.section, 'a perspective keeps the cut at its orthographic scale');
+assert.equal(telephoto.section, orthographic.section, 'changing focal length leaves the cut unchanged');
+assert.notEqual(wideAngle.perspective.ink[0], telephoto.perspective.ink[0]);
+assert(wideAngle.perspective.ink[0].startsWith('M'), 'the visible line behind the cut has its own strokes');
+assert.equal(wideAngle.cutFills[0], orthographic.cutFills[0]);
+assert.match(wideAngle.cutFills[0], /^M.*Z$/);
+assert(drawSection(35, true).perspective, 'horizontal cuts support plan perspective');
+
 console.log('linework tests passed');

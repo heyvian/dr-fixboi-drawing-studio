@@ -61,6 +61,81 @@ function fittedDrawingScale(bounds, { width, margin, drawingHeight, pixelsPerMil
   return standard && standard <= required * 1.15 ? standard : Math.max(1, Math.ceil(required));
 }
 
+// The picture plane sits at the cut, where the magnification is exactly one. Inverse depth
+// stays linear across projected triangles for the hidden-line renderer.
+function sectionLensProjection(cutDepth, focalDistance, centerX, centerY) {
+  return {
+    project([x, y, z]) {
+      const behind = Math.max(0, cutDepth - z);
+      const factor = focalDistance / (focalDistance + behind);
+      return [centerX + (x - centerX) * factor, centerY + (y - centerY) * factor, -behind * factor];
+    },
+    unproject([x, y, z]) {
+      const factor = 1 + z / focalDistance;
+      return [centerX + (x - centerX) / factor, centerY + (y - centerY) / factor, cutDepth + z / factor];
+    },
+    depthTolerance(z, metres) {
+      return metres * (1 + z / focalDistance) ** 2;
+    }
+  };
+}
+
+function collectSectionContour(triangle, plane, contours, group) {
+  const distances = triangle.map((point) => drawingDistance(point, plane));
+  let start, end;
+  for (let i = 0; i < 3; i++) {
+    const j = (i + 1) % 3;
+    const a = distances[i], b = distances[j];
+    if ((a > 1e-7) === (b > 1e-7)) continue;
+    const point = drawingMix(triangle[i], triangle[j], clamp(a / (a - b), 0, 1));
+    if (a > 1e-7) end = point;
+    else start = point;
+  }
+  if (!start || !end) return;
+  if (!contours.has(group)) contours.set(group, []);
+  contours.get(group).push([start, end]);
+}
+
+// Trace oriented closed contours per object. Opposite winding preserves openings in the fill.
+function sectionContourPaths(contours, clips) {
+  const paths = [];
+  const key = (point) => point.map((value) => Math.round(value * 10000)).join(',');
+  for (const segments of contours.values()) {
+    const outgoing = new Map();
+    for (const [a, b] of segments) {
+      const start = key(a), end = key(b);
+      if (start === end) continue;
+      const reverse = outgoing.get(end);
+      if (reverse?.delete(start)) {
+        if (!reverse.size) outgoing.delete(end);
+      } else {
+        if (!outgoing.has(start)) outgoing.set(start, new Map());
+        outgoing.get(start).set(end, a);
+      }
+    }
+    const loops = [];
+    while (outgoing.size) {
+      const positions = [], visited = new Map();
+      let vertex = outgoing.keys().next().value;
+      while (outgoing.has(vertex) && !visited.has(vertex)) {
+        const edges = outgoing.get(vertex);
+        const [next, position] = edges.entries().next().value;
+        visited.set(vertex, positions.length);
+        positions.push(position);
+        edges.delete(next);
+        if (!edges.size) outgoing.delete(vertex);
+        vertex = next;
+      }
+      if (!visited.has(vertex)) continue;
+      const loop = trimDrawingFace(positions.slice(visited.get(vertex)), clips);
+      if (loop.length >= 3)
+        loops.push(loop.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(3)} ${y.toFixed(3)}`).join('') + 'Z');
+    }
+    if (loops.length) paths.push(loops.join(''));
+  }
+  return paths;
+}
+
 // Project, crop and render the drawing on a physical sheet.
 function renderDrawing(
   geometry,
@@ -73,7 +148,8 @@ function renderDrawing(
   rendering,
   pens,
   region = null,
-  frame = null
+  frame = null,
+  sectionView = null
 ) {
   const viewport = drawingViewport(paper, region);
   const { width, height, margin, drawingHeight, pixelsPerMillimetre } = viewport;
@@ -85,7 +161,8 @@ function renderDrawing(
     midX = dot(frame.target, right);
     midY = -dot(frame.target, up);
   }
-  const denominator = scaleChoice === 'auto' ? fittedDrawingScale(bounds, viewport) : Number(scaleChoice),
+  const fittedDenominator = fittedDrawingScale(bounds, viewport);
+  const denominator = scaleChoice === 'auto' ? fittedDenominator : Number(scaleChoice),
     scale = (1000 * pixelsPerMillimetre) / denominator,
     originX = width / 2 - midX * scale + placement.x * pixelsPerMillimetre,
     centeredY = margin + drawingHeight / 2 - midY * scale,
@@ -111,8 +188,20 @@ function renderDrawing(
   const clips = modelClips.map(({ x, y, z, level }) => ({
     x: x / scale, y: y / scale, z, level: level + (x * originX + y * originY) / scale
   }));
+  const alignedPlane = clips[sectionView?.planeIndex];
+  const cutPlane = alignedPlane?.z > 0.999999 ? alignedPlane : null;
+  const cutDepth = cutPlane ? cutPlane.level / cutPlane.z : 0;
+  const lensY = sectionView?.eyeLevel == null ? midY : clamp(-sectionView.eyeLevel, bounds.top, bounds.bottom);
+  // Calibrate the full-frame lens at Auto fit, independently of the selected print scale.
+  const focalDistance = (sectionView?.lens ?? 0) * (width - 2 * margin) * fittedDenominator / (36 * 1000 * pixelsPerMillimetre);
+  const optics = cutPlane && focalDistance
+    ? sectionLensProjection(cutDepth, focalDistance, originX + midX * scale, originY + lensY * scale)
+    : null;
+  const contours = cutPlane && sectionView.cutFill ? new Map() : null;
   for (const face of geometry.faces) {
     const triangle = face.vertices.map((index) => projected[index]);
+    if (contours && face.cutGroup != null && (!face.glazing || !seeThrough))
+      collectSectionContour(triangle, cutPlane, contours, face.cutGroup);
     const polygon = trimDrawingFace(triangle, clips);
     if (polygon.length < 3) continue;
     if (!face.glazing || !seeThrough) {
@@ -122,7 +211,7 @@ function renderDrawing(
         depth,
         width,
         height,
-        polygon,
+        optics ? polygon.map(optics.project) : polygon,
         paint?.data,
         color,
         body ? outline : null,
@@ -143,12 +232,13 @@ function renderDrawing(
           Math.abs(drawingDistance(a, plane)) < 1e-6 &&
           Math.abs(drawingDistance(b, plane)) < 1e-6
         )
-          cutLines.push([a, b]);
+          cutLines.push([a, b, plane === cutPlane]);
       }
     }
   }
   const marks = [],
     section = [],
+    recedingSection = [],
     seen = new Set(),
     tolerance = Math.max(0.035, 0.85 / scale);
   const coordinate = (p) => p[0].toFixed(1) + ' ' + p[1].toFixed(1);
@@ -158,8 +248,13 @@ function renderDrawing(
     { x: 0, y: -1, z: 0, level: -margin },
     { x: 0, y: 1, z: 0, level: margin + drawingHeight }
   ];
-  function strokeVisible(startPoint, endPoint, collect, minimumLength = 0.35) {
-    const paperLine = clipDrawingLine(startPoint, endPoint, sheetEdges);
+  const cutFills = contours ? sectionContourPaths(contours, [...clips.filter((plane) => plane !== cutPlane), ...sheetEdges]) : [];
+  function strokeVisible(startPoint, endPoint, collect, { minimumLength = 0.35, frontCut = false } = {}) {
+    const paperLine = clipDrawingLine(
+      optics ? optics.project(startPoint) : startPoint,
+      optics ? optics.project(endPoint) : endPoint,
+      sheetEdges
+    );
     if (!paperLine) return;
     const [a, b] = paperLine;
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -171,7 +266,7 @@ function renderDrawing(
         x = a[0] + (b[0] - a[0]) * t,
         y = a[1] + (b[1] - a[1]) * t,
         z = a[2] + (b[2] - a[2]) * t,
-        visible = !drawingStrokeOccluded(occlusion, width, x, y, z + tolerance);
+        visible = frontCut || !drawingStrokeOccluded(occlusion, width, x, y, z + (optics ? optics.depthTolerance(z, tolerance) : tolerance));
       if (visible && start == null) start = Math.max(0, i - 0.5);
       if ((!visible || i === steps) && start != null) {
         const end = visible ? i : i - 0.5;
@@ -190,7 +285,11 @@ function renderDrawing(
     }
   }
   // Draw section cuts first in the deduplication set so their heavier weight wins.
-  for (const [a, b] of cutLines) strokeVisible(a, b, (command) => section.push(command));
+  for (const [a, b, frontCut] of cutLines)
+    strokeVisible(a, b, (command, from, to) => {
+      const target = optics && (from[2] + to[2]) / 2 < -1e-7 ? recedingSection : section;
+      target.push(command);
+    }, { frontCut: Boolean(optics && frontCut) });
   function strokeModelEdge(a, b, component, detail, { texture = false, bodies, outlineOnly, minimumLength } = {}) {
     const clipped = clipDrawingLine(projected[a], projected[b], clips);
     if (clipped)
@@ -208,16 +307,20 @@ function renderDrawing(
           texture,
           boundary
         });
-      }, minimumLength);
+      }, { minimumLength });
   }
   const creaseLimit = Math.cos((pens.creaseAngle * Math.PI) / 180);
   for (const { start, end, faces } of geometry.edges) {
-    const first = faces[0],
-      facing = dot(first.normal, back);
+    const first = faces[0];
+    const [x, y, z] = raw[start];
+    const towardLens = optics
+      ? back.map((axis, i) => axis * (cutDepth + focalDistance - z) + right[i] * (midX - x) + up[i] * (y - lensY))
+      : back;
+    const facing = dot(first.normal, towardLens);
     const open = faces.length === 1,
       turning = faces.slice(1).some((other) => {
         const similarity = Math.abs(dot(first.normal, other.normal)),
-          otherFacing = dot(other.normal, back);
+          otherFacing = dot(other.normal, towardLens);
         // Coplanar triangles disappear. Smooth fans show a stroke only at a silhouette.
         return similarity < 0.9999 && facing * otherFacing <= 0;
       }),
@@ -236,11 +339,13 @@ function renderDrawing(
       strokeModelEdge(a, b, component, 1, { texture, minimumLength: 0 });
   const palette = drawingPenPalette(pens, geometry.model),
     { ranked, layerIndices } = palette,
-    count = ranked.length,
-    ink = Array.from({ length: count }, () => []),
-    texture = Array.from({ length: count }, () => []),
-    silhouetteInk = [],
-    componentInk = [];
+    count = ranked.length;
+  const penPaths = (cuts) => ({
+    ink: Array.from({ length: count }, () => []),
+    texture: Array.from({ length: count }, () => []),
+    silhouetteInk: [], componentInk: [], section: cuts
+  });
+  const front = penPaths(section), receding = optics && penPaths(recedingSection);
   let far = Infinity,
     near = -Infinity;
   for (const mark of marks) {
@@ -250,6 +355,7 @@ function renderDrawing(
   // Base the intervals on visible strokes so a clip or a cropped sheet still uses the pen range.
   const [bandStart, bandEnd] = drawingPenDepthRange(pens).map((percent) => percent / 100);
   for (const mark of marks) {
+    const { ink, texture, silhouetteInk, componentInk } = receding && mark.depth < -1e-7 ? receding : front;
     const position = near > far ? (near - mark.depth) / (near - far) : 0,
       // Strokes nearer than the band start use the heaviest pen and those beyond its end the lightest.
       banded = clamp((position - bandStart) / (bandEnd - bandStart), 0, 1);
@@ -288,17 +394,24 @@ function renderDrawing(
     ctx.putImageData(paint, 0, 0);
     wash = image.toDataURL('image/png');
   }
+  function joinPaths({ ink, texture, silhouetteInk, componentInk, section }) {
+    return {
+      ink: ink.map((paths) => paths.join('')),
+      texture: texture.map((paths) => paths.join('')),
+      silhouetteInk: silhouetteInk.join(''),
+      componentInk: componentInk.join(''),
+      section: section.join('')
+    };
+  }
   return {
-    ink: ink.map((paths) => paths.join('')),
-    silhouetteInk: silhouetteInk.join(''),
-    componentInk: componentInk.join(''),
+    ...joinPaths(front),
+    perspective: receding && joinPaths(receding),
+    cutFills,
     groundLine,
-    texture: texture.map((paths) => paths.join('')),
-    section: section.join(''),
     pens,
     palette,
     heaviest: ranked[0],
-    populated: marks.length > 0 || section.length > 0 || Boolean(groundLine),
+    populated: marks.length > 0 || section.length > 0 || recedingSection.length > 0 || cutFills.length > 0 || Boolean(groundLine),
     basis,
     scale,
     originX,
@@ -306,9 +419,10 @@ function renderDrawing(
     midX,
     midY,
     depth,
+    optics,
     wash,
     exportFills: paint
-      ? () => drawingExportFills(geometry, projected, seeThrough, [...clips, ...sheetEdges], width, height, sun, rendering === 'flat')
+      ? () => drawingExportFills(geometry, projected, seeThrough, clips, sheetEdges, width, height, sun, rendering === 'flat', optics)
       : null,
     width,
     height,

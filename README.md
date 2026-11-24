@@ -20,6 +20,8 @@ Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the sc
 
 Use **Paper size → Custom size…** to save a named sheet in millimetres or inches. Custom sizes are available across models in the same browser and can be recalled with a saved view.
 
+To draw a perspective cut, add a vertical or horizontal clipping plane and choose **Align view to plane**. Under **View**, choose **Section perspective** for a vertical cut or **Plan perspective** for a horizontal one. The cut keeps its printed scale and line weights. The 8–200 mm lens and **Lighten beyond cut** control the geometry that recedes behind it. Enable **Solid black cut fill** to fill closed cut contours on the aligned plane, leaving holes clear. The projection, lens, fade, and cut fill are saved with the view and carried through SVG, PDF, and print.
+
 In **Line weights**, camera-distance assignment shows which depths each pen covers. Pen widths are set in printed millimetres. A 0.50 mm stroke stays 0.50 mm when you change the drawing scale. For `.3dm` files, **Rhino Print Width by layer** reads the Print Width column from the Layers panel, uses 0.25 mm for layers set to Default, and omits layers set to No print from the sheet. The overall silhouette, key outlines and ground line have their own printed widths and colours. Ground lines appear in elevations and vertical sections.
 
 ### Illustrator
