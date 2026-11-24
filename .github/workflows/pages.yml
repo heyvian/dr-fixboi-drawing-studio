@@ -15,11 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,8 +36,16 @@ jobs:
           cp node_modules/rhino3dm/{rhino3dm.module.min.js,rhino3dm.wasm} _site/vendor/rhino3dm/
           cp node_modules/rhino3dm/README.md _site/vendor/rhino3dm/
           node -e 'const fs = require("node:fs"); const file = "_site/index.html"; const base = process.env.PAGES_URL; if (base) fs.writeFileSync(file, fs.readFileSync(file, "utf8").replaceAll("https://heyvian.github.io/dr-fixboi-drawing-studio/", base.replace(/\/$/, "") + "/"));'
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
-      - uses: actions/deploy-pages@v4
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v5
         id: deployment
