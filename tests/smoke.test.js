@@ -6,6 +6,7 @@ const assert = require('assert');
 const { pathToFileURL } = require('url');
 const { chromium } = require('playwright-core');
 const { makeFixture } = require('./fixture');
+const { version } = require('../package.json');
 
 (async () => {
   const browser = await chromium.launch(process.env.BROWSER_EXECUTABLE
@@ -17,6 +18,7 @@ const { makeFixture } = require('./fixture');
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   const appUrl = process.env.APP_URL || pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
   await page.goto(appUrl);
+  assert.strictEqual(await page.locator('.app-identity #appVersion').textContent(), `v${version}`);
 
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
   const svgDialog = page.getByRole('dialog', { name: 'Export SVG' });

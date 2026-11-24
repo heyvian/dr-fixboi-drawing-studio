@@ -66,7 +66,16 @@ summary::marker { color: var(--accent); }
 .app-identity { display: flex; gap: 12px; align-items: center; margin-inline-start: auto; }
 .app-header h1 { font-size: 20px; font-weight: 800; line-height: 1; letter-spacing: -0.045em; }
 .app-header h1 sup { font-size: .6em; line-height: 0; letter-spacing: 0; }
-.app-header .sub { margin-top: 5px; color: #c9c3b4; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .15em; }
+.app-header .sub { margin-top: 5px; color: #c9c3b4; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .12em; white-space: nowrap; }
+.app-version {
+  margin-inline-start: 3px;
+  padding-inline-start: 6px;
+  border-inline-start: 1px solid #a78bb6;
+  color: #e6d8ef;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 700;
+}
 .registration-mark {
   width: 22px;
   height: 22px;
@@ -693,6 +702,10 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   .app-header { padding: 12px 15px; }
   .app-header::before { mask-image: linear-gradient(90deg, transparent 48%, #0005); }
   .header-actions { width: 100%; }
+  .app-identity { gap: 8px; }
+  .app-header .sub { letter-spacing: .03em; }
+  .app-version { margin-inline-start: 1px; padding-inline-start: 4px; }
+  .mode-tabs button { padding-inline: 6px; }
   .file-menu-panel { inset-inline: 0 auto; }
   .header-actions .file-name { max-width: 100%; }
   .drop-zone { position: relative; width: 100%; }
