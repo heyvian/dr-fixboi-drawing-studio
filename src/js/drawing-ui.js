@@ -93,7 +93,7 @@ const openDrawingWorkspace = (() => {
       sectionProjection: saved.sectionProjection === 'perspective' ? 'perspective' : 'orthographic',
       sectionLens: Number.isFinite(saved.sectionLens) ? clamp(Math.round(saved.sectionLens), 8, 200) : 35,
       perspectiveFade: Number.isFinite(saved.perspectiveFade) ? clamp(saved.perspectiveFade, 0, 100) : 55,
-      cutTreatment: cutTreatments.includes(saved.cutTreatment) ? saved.cutTreatment : saved.cutFill === true ? 'solid' : 'none',
+      cutTreatment: cutTreatments.includes(saved.cutTreatment) ? saved.cutTreatment : saved.cutFill === false ? 'none' : 'solid',
       cutColor: paintHex(saved.cutColor) || '#000000',
       hatchSpacing: Number.isFinite(saved.hatchSpacing) ? validHatchSpacing(saved.hatchSpacing) : 2
     };

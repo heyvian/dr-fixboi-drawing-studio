@@ -248,6 +248,7 @@ const { version } = require('../package.json');
   assert.strictEqual(await activeProjection(), 'aligned');
   assert.strictEqual(await page.locator('#clipMenuToggle').getAttribute('aria-selected'), 'true');
   assert(await page.locator('#drawingSectionProjection').evaluate((el) => el === document.activeElement));
+  assert.strictEqual(await page.inputValue('#drawingCutTreatment'), 'solid');
   await choose('#drawingSectionProjection', 'perspective');
   assert(await page.locator('#drawingSectionLensNumber').isVisible());
   assert(await page.locator('#drawingPerspectiveFade').isVisible());
