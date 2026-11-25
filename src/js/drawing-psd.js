@@ -83,9 +83,6 @@ async function drawPsdLayer(vector, layer, context) {
 }
 
 let psdTools;
-// Let the browser paint status before geometry preparation and the synchronous encoding step.
-const drawingPsdYield = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
-
 async function createDrawingPsd(vector, paper, ppi, signal, progress) {
   const [width, height] = drawingPsdSize(paper, ppi);
   if (!drawingPsdCanFit(width, height)) throw Error(drawingPsdTooLarge);
@@ -112,7 +109,7 @@ async function createDrawingPsd(vector, paper, ppi, signal, progress) {
     if (!merged || !paint) throw Error('The browser could not create a canvas for Photoshop export.');
     for (const [index, layer] of layers.entries()) {
       progress(`Rasterizing layer ${index + 1} of ${layers.length}…`);
-      await drawingPsdYield();
+      await yieldForDrawingOutput();
       signal.throwIfAborted();
       scratch.width = layer.width;
       scratch.height = layer.height;
@@ -131,7 +128,7 @@ async function createDrawingPsd(vector, paper, ppi, signal, progress) {
     }
     scratch.width = scratch.height = 1;
     progress('Writing Photoshop file…');
-    await drawingPsdYield();
+    await yieldForDrawingOutput();
     signal.throwIfAborted();
     const imageData = merged.getImageData(0, 0, width, height);
     composite.width = composite.height = 1;

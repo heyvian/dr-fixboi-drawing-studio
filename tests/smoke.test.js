@@ -21,11 +21,16 @@ const { version } = require('../package.json');
   assert.strictEqual(await page.locator('.app-identity #appVersion').textContent(), `V${version}`);
 
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
-  const svgDialog = page.getByRole('dialog', { name: 'Export SVG' });
+  const exportDialog = page.getByRole('dialog', { name: 'Export and print' });
+  async function openOutput(tab, format) {
+    if (!(await tab.locator('#sheetExport').isVisible())) await tab.click('#openSheetExport');
+    const choice = tab.locator(`#exportFormats [data-format="${format}"]`);
+    if (await choice.getAttribute('aria-selected') === 'false') await choice.click();
+  }
   async function downloadSvg() {
-    if (!(await svgDialog.isVisible())) await page.click('#exportDrawing');
-    const [file] = await Promise.all([page.waitForEvent('download'), page.click('#confirmSvgExport')]);
-    await svgDialog.waitFor({ state: 'hidden' });
+    await openOutput(page, 'svg');
+    const [file] = await Promise.all([page.waitForEvent('download'), page.click('#confirmSheetExport')]);
+    await exportDialog.waitFor({ state: 'hidden' });
     return file;
   }
 
@@ -139,7 +144,7 @@ const { version } = require('../package.json');
   await page.click('.nav-views [data-view=iso]');
   await page.click('#navExtents');
   await page.click('#modeDraw');
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   assert.strictEqual(await page.locator('#drawingLinework').getAttribute('d'), capturedPlan);
   assert.strictEqual(await page.inputValue('#drawingScale'), '1000');
   await page.click('#modeNav');
@@ -155,7 +160,7 @@ const { version } = require('../package.json');
   await page.waitForFunction((before) => document.querySelector('#drawingSheet').innerHTML !== before, grounded);
   assert.strictEqual(await page.inputValue('#drawingScale'), currentScale);
   await page.click('#fitDrawing');
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   assert.strictEqual(await page.inputValue('#drawingScale'), 'auto');
   const workingSheet = await page.locator('#drawingSheet').innerHTML();
   const workingWidth = (await page.locator('#drawingSheet').boundingBox()).width;
@@ -186,14 +191,14 @@ const { version } = require('../package.json');
   assert(framing.relativeHeight > 0.8 && framing.relativeHeight < 1 && framing.centred);
   const capturedCamera = await page.evaluate(() => viewer.snapshot());
   await page.locator('[data-sheet-view="plan"]').click();
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   assert.strictEqual(await activeProjection(), 'plan');
   assert.strictEqual(await page.inputValue('#drawingPlanSheet'), 'single');
   const planPaths = await page.locator('#drawingLinework').getAttribute('d');
   await choose('#drawingPlanSheet', 'floors');
   assert(await page.locator('#drawingSheet').evaluate(sheet => sheet.classList.contains('planset')));
   await page.locator('[data-sheet-view="elevation"]').click();
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   const elevationPaths = await page.locator('#drawingLinework').getAttribute('d');
   assert.notStrictEqual(elevationPaths, planPaths);
   await page.locator('#drawingSheet').press('ArrowRight');
@@ -204,13 +209,13 @@ const { version } = require('../package.json');
   assert.deepStrictEqual(await page.evaluate(() => viewer.snapshot()), capturedCamera);
   assert(await page.locator('#navStage').isHidden());
   await page.locator('[data-sheet-view="axo"]').click();
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   const axo = await page.locator('#drawingLinework').getAttribute('d');
   await page.click('#viewTab');
   const southwest = page.locator('#drawingCompass [data-compass-point="SW"]');
   await southwest.click();
   assert.strictEqual(await southwest.getAttribute('aria-pressed'), 'true');
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   assert.notStrictEqual(await page.locator('#drawingLinework').getAttribute('d'), axo);
   assert.deepStrictEqual(await page.evaluate(() => viewer.snapshot()), capturedCamera);
 
@@ -253,7 +258,7 @@ const { version } = require('../package.json');
   assert(await page.locator('#drawingSectionLensNumber').isVisible());
   assert(await page.locator('#drawingPerspectiveFade').isVisible());
   assert.strictEqual(await page.inputValue('#drawingPerspectiveOrigin'), 'sheet');
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   await page.click('#placePerspectiveOrigin');
   const marker = page.locator('#perspectiveOriginMarker');
   assert(await marker.isVisible());
@@ -306,22 +311,23 @@ const { version } = require('../package.json');
   page.on('download', (file) => {
     if (file.suggestedFilename().endsWith('.svg')) svgDownloads++;
   });
-  await page.click('#exportDrawing');
-  assert(await svgDialog.isVisible());
-  assert.strictEqual(await svgDialog.getByRole('listitem').count(), 5);
+  await openOutput(page, 'svg');
+  assert(await exportDialog.isVisible());
+  await exportDialog.getByText('Create named layers in Illustrator', { exact: true }).click();
+  assert.strictEqual(await exportDialog.getByRole('listitem').count(), 5);
   const [script] = await Promise.all([
     page.waitForEvent('download'),
-    svgDialog.getByRole('link', { name: 'Download the Illustrator script' }).click()
+    exportDialog.getByRole('link', { name: 'Download the Illustrator script' }).click()
   ]);
   assert.match(script.suggestedFilename(), /\.jsx$/);
   assert.match(await fs.promises.readFile(await script.path(), 'utf8'), /File\.openDialog/);
   await page.uncheck('#exportPaper');
   await page.uncheck('#exportAnnotations');
   await choose('#exportPaths', 'individual');
-  await page.click('#cancelSvgExport');
-  assert(await svgDialog.isHidden());
+  await page.click('#closeSheetExport');
+  assert(await exportDialog.isHidden());
   assert.strictEqual(svgDownloads, 0, 'opening the options and cancelling does not download an SVG');
-  await page.click('#exportDrawing');
+  await openOutput(page, 'svg');
   assert.strictEqual(await page.isChecked('#exportPaper'), false);
   assert.strictEqual(await page.isChecked('#exportAnnotations'), false);
   assert.strictEqual(await page.inputValue('#exportPaths'), 'individual');
@@ -398,7 +404,7 @@ const { version } = require('../package.json');
     input.value = '#cccccc';
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.locator('#exportDrawing:enabled').waitFor();
+  await page.locator('#openSheetExport:enabled').waitFor();
   await page.click('#paperTab');
   await page.locator('#sheetContrast summary').click();
   await page.locator('#applySheetContrast:enabled').waitFor();
@@ -410,7 +416,7 @@ const { version } = require('../package.json');
   await penWidth.press('Tab');
   for (const scale of ['50', '250', '5000']) {
     await choose('#drawingScale', scale);
-    await page.locator('#exportDrawing:enabled').waitFor();
+    await page.locator('#openSheetExport:enabled').waitFor();
     const previewWidth = await page.locator('#drawingLinework').evaluate((stroke) =>
       Number(stroke.getAttribute('stroke-width')) * 250 / stroke.ownerSVGElement.viewBox.baseVal.width);
     assert(Math.abs(previewWidth - 0.50) < 1e-6, `preview width stays at 0.50 mm at 1:${scale}`);
@@ -446,7 +452,7 @@ const { version } = require('../package.json');
   await page.uncheck('#drawingComponentOutlines');
 
   const elevationOnPaper = async () => {
-    await page.locator('#exportDrawing:enabled').waitFor();
+    await page.locator('#openSheetExport:enabled').waitFor();
     return page.locator('#drawingSheet').evaluate((sheet) => ({
       ratio: Number(sheet.querySelector('[data-scale-ratio]').dataset.scaleRatio),
       height: sheet.querySelector('[data-layer="Artwork"]').getBBox().height * 400 / sheet.viewBox.baseVal.height
@@ -490,7 +496,7 @@ const { version } = require('../package.json');
     await page.click('#modeDraw');
     await choose('#drawingRendering', 'flat');
     await page.waitForFunction(() => document.querySelectorAll('#drawingSheet path').length > 3);
-    await page.click('#exportDrawing');
+    await openOutput(page, 'svg');
     await page.check('#exportAnnotations');
     const rhinoDownload = await downloadSvg();
     const rhinoSvg = await fs.promises.readFile(await rhinoDownload.path(), 'utf8');
@@ -529,7 +535,7 @@ const { version } = require('../package.json');
     assert(Math.abs(scaleBar.length - scaleBar.expected) < 1e-6, 'exported geometry and scale bar share physical point coordinates');
     await choose('#drawingPenMode', 'rhino');
     await page.locator('#drawingRhinoLayerWeights').getByText('No print').waitFor();
-    await page.click('#exportDrawing');
+    await openOutput(page, 'svg');
     await page.uncheck('#exportAnnotations');
     const plotDownload = await downloadSvg();
     const plotSvg = await fs.promises.readFile(await plotDownload.path(), 'utf8');
@@ -541,7 +547,8 @@ const { version } = require('../package.json');
     assert(Math.abs(plotStroke - 0.66 * 72 / 25.4) < 1e-6);
     await choose('#drawingPaper', 'tabloid');
     await choose('#drawingOrientation', 'landscape');
-    const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.click('#exportBluebeam')]);
+    await openOutput(page, 'pdf');
+    const [pdfDownload] = await Promise.all([page.waitForEvent('download'), page.click('#confirmSheetExport')]);
     assert.match(pdfDownload.suggestedFilename(), /-tabloid-1-\d+\.pdf$/);
     const pdf = await fs.promises.readFile(await pdfDownload.path(), 'latin1');
     assert.match(pdf, /^%PDF-/);
@@ -557,7 +564,10 @@ const { version } = require('../package.json');
       const reopened = await context.newPage();
       await reopened.goto(appUrl);
       await reopened.setInputFiles('#fileInput', { name: projectDownload.suggestedFilename(), mimeType: 'application/octet-stream', buffer: projectData });
-      await reopened.locator('#exportDrawing:enabled').waitFor();
+      await reopened.locator('#openSheetExport:enabled').waitFor();
+      await reopened.click('#openSheetExport');
+      assert.strictEqual(await reopened.locator('#exportPdfTab').getAttribute('aria-selected'), 'true');
+      await reopened.keyboard.press('Escape');
       assert.strictEqual(await reopened.inputValue('#drawingPaper'), 'tabloid');
       assert.strictEqual(await reopened.inputValue('#unitSelect'), 'auto');
       assert.strictEqual(await reopened.getByLabel('Colour for Walls', { exact: true }).inputValue(), '#3068a7');
@@ -584,7 +594,7 @@ const { version } = require('../package.json');
       await reopened.selectOption('#drawingPlaneAxis', 'horizontal');
       await reopened.fill('#drawingPlaneOffset', '2.8');
       await reopened.locator('#drawingPlaneOffset').press('Tab');
-      await reopened.locator('#exportDrawing:enabled').waitFor();
+      await reopened.locator('#openSheetExport:enabled').waitFor();
       const drawingBefore = await reopened.locator('#drawingSheet').innerHTML();
       const cameraBefore = await reopened.evaluate(() => viewer.projectState());
 
@@ -596,7 +606,7 @@ const { version } = require('../package.json');
       }
       const revisionBytes = Buffer.from(makeRhinoRevision(r, bytes));
       await replaceModel(reopened, 'revision.3dm', revisionBytes, 'Model updated from revision.3dm');
-      await reopened.locator('#exportDrawing:enabled').waitFor();
+      await reopened.locator('#openSheetExport:enabled').waitFor();
       assert.notStrictEqual(await reopened.locator('#drawingSheet').innerHTML(), drawingBefore);
       assert.deepStrictEqual(await reopened.evaluate(() => viewer.projectState()), cameraBefore);
       assert.strictEqual(await reopened.inputValue('#drawingScale'), '50');
@@ -619,7 +629,7 @@ const { version } = require('../package.json');
       try {
         await clean.goto(appUrl);
         await clean.setInputFiles('#fileInput', { name: revisedProject.suggestedFilename(), mimeType: 'application/octet-stream', buffer: revisedData });
-        await clean.locator('#exportDrawing:enabled').waitFor();
+        await clean.locator('#openSheetExport:enabled').waitFor();
         assert.strictEqual(await clean.inputValue('#drawingRevision'), 'R2');
         assert.strictEqual(await clean.inputValue('#drawingScale'), '50');
         await clean.click('#clipMenuToggle');
@@ -658,12 +668,12 @@ const { version } = require('../package.json');
   assert.strictEqual(await page.inputValue('#drawingPaper'), 'a3');
   assert.strictEqual(await page.locator('#drawingPlanes button[aria-pressed=true]').count(), 1);
   assert.strictEqual(await firstLayer.isChecked(), false);
-  await page.click('#exportDrawing');
+  await openOutput(page, 'svg');
   assert.strictEqual(await page.isChecked('#exportPaper'), false);
   assert.strictEqual(await page.isChecked('#exportAnnotations'), false);
   assert.strictEqual(await page.inputValue('#exportPaths'), 'individual');
   await page.keyboard.press('Escape');
-  assert(await svgDialog.isHidden());
+  assert(await exportDialog.isHidden());
 
   await page.click('#renameView');
   await page.fill('#savedViewName', 'Issued axonometric');
@@ -688,7 +698,7 @@ const { version } = require('../package.json');
 
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.locator('#drawingControls').isHidden());
-  assert(await page.locator('#exportDrawing').isHidden());
+  assert(await page.locator('#openSheetExport').isHidden());
   assert(await page.locator('#drawingStage .mobile-view-note').isVisible());
   assert(await page.locator('#drawingSheet').isVisible());
   await page.locator('#expandDrawing:enabled').waitFor();
@@ -733,19 +743,46 @@ const { version } = require('../package.json');
     await exportPage.click('#addDrawingPlane');
     await exportPage.click('#alignDrawingPlane');
     await exportPage.selectOption('#drawingCutTreatment', 'crosshatch');
-    const photoshop = exportPage.getByRole('dialog', { name: 'Export Photoshop PSD' });
-    await exportPage.click('#exportPhotoshop');
+    const output = exportPage.getByRole('dialog', { name: 'Export and print' });
+    const exportLauncher = exportPage.locator('#openSheetExport:enabled');
+    const svgTab = exportPage.getByRole('tab', { name: 'SVG Illustrator' });
+    const psdTab = exportPage.getByRole('tab', { name: 'PSD Photoshop' });
+    await exportLauncher.waitFor();
+    await exportLauncher.press('Enter');
+    assert.strictEqual(await output.getByRole('tab').count(), 4);
+    assert.match(await exportPage.locator('#exportSheetContext').textContent(), /Section · 1:\d+ · Tabloid · 17 × 11 in/);
+    assert(await svgTab.evaluate((tab) => tab === document.activeElement));
+    await svgTab.press('ArrowDown');
+    assert.strictEqual(await psdTab.getAttribute('aria-selected'), 'true');
+    assert(await psdTab.evaluate((tab) => tab === document.activeElement));
+    await psdTab.press('End');
+    assert.strictEqual(await exportPage.locator('#exportPrintTab').getAttribute('aria-selected'), 'true');
+    assert(await exportPage.locator('#exportPrintScope').isHidden());
+    await exportPage.locator('#exportPrintTab').press('Home');
+    await exportPage.setViewportSize({ width: 475, height: 640 });
+    await exportPage.waitForFunction(() => document.getElementById('exportFormats').getAttribute('aria-orientation') === 'horizontal');
+    await svgTab.press('ArrowRight');
+    assert.strictEqual(await psdTab.getAttribute('aria-selected'), 'true');
+    const box = await output.boundingBox();
+    assert(box.x >= 0 && box.y >= 0 && box.x + box.width <= 475 && box.y + box.height <= 640);
+    const action = await output.getByRole('button', { name: 'Download PSD' }).boundingBox();
+    assert(action.y + action.height <= 640);
+    await exportPage.setViewportSize({ width: 1400, height: 900 });
+    await exportPage.keyboard.press('Escape');
+    assert(await exportLauncher.evaluate((button) => button === document.activeElement));
+    await exportPage.click('#openSheetExport');
+    assert.strictEqual(await psdTab.getAttribute('aria-selected'), 'true');
     assert.strictEqual(await exportPage.inputValue('#psdResolution'), '300');
     const dimensions = await exportPage.locator('#psdDimensions').textContent();
     assert.match(dimensions.replace(/[^\d×]/g, ''), /^5100×3300$/);
     await exportPage.selectOption('#psdResolution', '600');
-    assert(await exportPage.locator('#confirmPsdExport').isDisabled());
-    assert.match(await photoshop.getByRole('alert').textContent(), /Choose a lower resolution/);
+    assert(await exportPage.locator('#confirmSheetExport').isDisabled());
+    assert.match(await output.getByRole('alert').textContent(), /Choose a lower resolution/);
     await exportPage.selectOption('#psdResolution', '300');
     await exportPage.uncheck('#psdPaper');
 
     async function readExport() {
-      const [download] = await Promise.all([exportPage.waitForEvent('download'), exportPage.click('#confirmPsdExport')]);
+      const [download] = await Promise.all([exportPage.waitForEvent('download'), exportPage.click('#confirmSheetExport')]);
       assert.match(download.suggestedFilename(), /-tabloid-1-\d+\.psd$/);
       return readPsd(await fs.promises.readFile(await download.path()), readOptions);
     }
@@ -776,7 +813,7 @@ const { version } = require('../package.json');
     for (let row = 0; row < stroke.height; row++) coverage += stroke.data[(row * stroke.width + (stroke.width >> 1)) * 4 + 3] / 255;
     assert(Math.abs(coverage - 0.5 * 300 / 25.4) < 0.2, `0.50 mm stroke exported with ${coverage} px coverage`);
 
-    await exportPage.click('#exportPhotoshop');
+    await openOutput(exportPage, 'psd');
     await exportPage.selectOption('#psdResolution', '150');
     await exportPage.check('#psdPaper');
     await exportPage.uncheck('#psdAnnotations');
@@ -791,21 +828,44 @@ const { version } = require('../package.json');
     await exportPage.reload();
     await openBox();
     await exportPage.click('#modeDraw');
-    await exportPage.click('#exportPhotoshop');
+    await openOutput(exportPage, 'psd');
     assert.strictEqual(await exportPage.inputValue('#psdResolution'), '150');
     assert.strictEqual(await exportPage.isChecked('#psdAnnotations'), false);
     await exportPage.keyboard.press('Escape');
-    await exportPage.click('#exportDrawing');
+    await openOutput(exportPage, 'svg');
     assert.strictEqual(await exportPage.isChecked('#exportAnnotations'), true, 'PSD preferences are independent of SVG preferences');
     await exportPage.keyboard.press('Escape');
     await exportPage.click('[data-sheet-view="plan"]');
     await exportPage.click('#paperTab');
     await exportPage.selectOption('#drawingPlanSheet', 'floors');
-    await exportPage.click('#exportPhotoshop');
+    await openOutput(exportPage, 'psd');
     await exportPage.check('#psdAnnotations');
     const floorSet = await readExport();
     assert.deepStrictEqual(floorSet.children.find(({ name }) => name === 'Sheet annotations').children.map(({ name }) => name),
       ['Floor labels', 'Title and scale']);
+    await exportPage.evaluate(() => {
+      window.print = () => {
+        window.printPreview = {
+          dialogOpen: document.getElementById('sheetExport').open,
+          sheets: [...document.querySelectorAll('#drawingPrintPages > svg')].map((page) => ({
+            width: page.getAttribute('width'), height: page.getAttribute('height'), paths: page.querySelectorAll('path').length
+          }))
+        };
+        window.dispatchEvent(new Event('afterprint'));
+      };
+    });
+    await openOutput(exportPage, 'print');
+    assert(await output.getByRole('radio', { name: 'Current sheet' }).isChecked());
+    await output.getByRole('button', { name: 'Print sheet' }).click();
+    await exportPage.waitForFunction(() => window.printPreview?.sheets.length === 1);
+    assert.strictEqual(await exportPage.evaluate(() => window.printPreview.dialogOpen), false);
+    await openOutput(exportPage, 'print');
+    await output.getByRole('radio', { name: 'One sheet per floor (2 pages)' }).check();
+    await output.getByRole('button', { name: 'Print floor set' }).click();
+    await exportPage.waitForFunction(() => window.printPreview?.sheets.length === 2);
+    const pages = await exportPage.evaluate(() => window.printPreview);
+    assert.strictEqual(pages.dialogOpen, false);
+    assert(pages.sheets.every(({ width, height, paths }) => width === '17in' && height === '11in' && paths > 0));
   } finally {
     await exportPage.close();
   }

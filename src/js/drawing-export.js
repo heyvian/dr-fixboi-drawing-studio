@@ -103,6 +103,9 @@ function convertDrawingSvgToPoints(root) {
   return root;
 }
 
+// Let the browser paint status before geometry preparation and the synchronous encoding step.
+const yieldForDrawingOutput = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+
 function loadDrawingExportScript(name, errorMessage) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');

@@ -9,11 +9,6 @@ const openDrawingWorkspace = (() => {
     loading = $('drawingLoading'),
     loadingLabel = $('drawingLoadingLabel'),
     progress = $('drawingProgress'),
-    exportButton = $('exportDrawing'),
-    confirmSvgExport = $('confirmSvgExport'),
-    psdButton = $('exportPhotoshop'),
-    bluebeamButton = $('exportBluebeam'),
-    printButton = $('printDrawing'),
     expandButton = $('expandDrawing'),
     storageKey = 'poly-nation-drawings-standalone-v1',
     svgNS = 'http://www.w3.org/2000/svg',
@@ -139,8 +134,6 @@ const openDrawingWorkspace = (() => {
     rendered = null,
     timer = 0,
     renderRevision = 0,
-    printingFloorSet = false,
-    exportingPdf = false,
     placing = null,
     perspectivePickPoint = null,
     drag = null;
@@ -186,38 +179,6 @@ const openDrawingWorkspace = (() => {
     // Drawing controls remain available when the browser blocks local storage.
   }
 
-  const exportPaper = $('exportPaper'), exportAnnotations = $('exportAnnotations'), exportPaths = $('exportPaths'),
-    psdPaper = $('psdPaper'), psdAnnotations = $('psdAnnotations'), psdResolution = $('psdResolution');
-  const exportStorageKey = storageKey + '-export';
-  const psdPreferences = () => ({ paper: psdPaper.checked, annotations: psdAnnotations.checked, ppi: Number(psdResolution.value) });
-  const exportPreferences = () => ({
-    paper: exportPaper.checked, annotations: exportAnnotations.checked, paths: exportPaths.value, psd: psdPreferences()
-  });
-  function applyExportPreferences(preferences) {
-    exportPaper.checked = preferences?.paper !== false;
-    exportAnnotations.checked = preferences?.annotations !== false;
-    exportPaths.value = preferences?.paths === 'individual' ? 'individual' : 'batch';
-    if (preferences?.psd) {
-      psdPaper.checked = preferences.psd.paper !== false;
-      psdAnnotations.checked = preferences.psd.annotations !== false;
-      psdResolution.value = [72, 150, 300, 600].includes(preferences.psd.ppi) ? String(preferences.psd.ppi) : '300';
-    }
-  }
-  function saveExportPreferences() {
-    try {
-      localStorage.setItem(exportStorageKey, JSON.stringify(exportPreferences()));
-    } catch {
-      // Export still uses the current controls.
-    }
-  }
-  try {
-    applyExportPreferences(JSON.parse(localStorage.getItem(exportStorageKey)));
-  } catch {
-    // The defaults are already set in the controls.
-  }
-  for (const control of [exportPaper, exportAnnotations, exportPaths, psdPaper, psdAnnotations])
-    control.onchange = saveExportPreferences;
-
   const viewList = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus'),
     viewDialog = $('savedViewDialog'), viewError = $('savedViewError');
   let selectedViewName = '', viewAction = '';
@@ -261,7 +222,7 @@ const openDrawingWorkspace = (() => {
       working,
       views: savedViews,
       papers: [...paperIds].map((id) => customPapers.get(id)).filter(Boolean),
-      export: exportPreferences()
+      export: exportPanel.preferences()
     };
   }
   function restoreProjectDrawings(project) {
@@ -288,10 +249,7 @@ const openDrawingWorkspace = (() => {
     }
     refreshSavedViews();
     restoreSnapshot(mapPaper(project.working));
-    if (project.export) {
-      applyExportPreferences(project.export);
-      saveExportPreferences();
-    }
+    if (project.export) exportPanel.restore(project.export);
     try {
       localStorage.setItem(customPaperStorageKey, JSON.stringify([...customPapers.values()]));
       localStorage.setItem(viewsStorageKey(), JSON.stringify(savedViews));
@@ -590,7 +548,7 @@ const openDrawingWorkspace = (() => {
     $('drawingOrbit').value = heading;
     $('drawingOrbitAngle').textContent = heading + '°';
     showHeading(heading, plan);
-    $('drawingPlanSheetField').hidden = $('printFloorSet').hidden = settings.view !== 'plan';
+    $('drawingPlanSheetField').hidden = settings.view !== 'plan';
     $('drawingPlanSheet').value = settings.planSheet;
     sheet.classList.toggle('planset', allPlans());
     $('placeDrawingPlane').disabled = allPlans();
@@ -1244,8 +1202,7 @@ const openDrawingWorkspace = (() => {
       // Elevations and upright sections have an edge-on plan. Their footer only needs the scale.
       const mapBasis = Math.abs(camera.el) > 0.01 ? orbitBasis(camera) : null;
       drawScaleIndicator(footerScale, denominator, width - margin, textY, sheetText, mapBasis);
-      setDrawingOutputAvailable(rendered.populated);
-      $('printFloorSet').disabled = printingFloorSet;
+      setDrawingOutputAvailable(rendered.populated, true);
       resizePaperPreview();
       setDrawingProgress('');
       const cameraNote = next.perspectiveCameraFallback
@@ -1276,7 +1233,7 @@ const openDrawingWorkspace = (() => {
       ? allPlans()
         ? 'Some plans extend past their panels. Use Fit to scale the set.'
         : 'Drawing extends past the sheet. Drag to choose the part to export.'
-      : exportButton.disabled
+      : !rendered?.populated
         ? 'No printable geometry is visible on this sheet.'
         : allPlans()
           ? 'Floor plans share a drawing scale.'
@@ -1285,15 +1242,13 @@ const openDrawingWorkspace = (() => {
             ? 'Using the captured 3D framing. Drag the drawing or use the arrow keys to pan the sheet.'
             : 'Drag the drawing or use the arrow keys to reposition it.';
   }
-  function setDrawingOutputAvailable(available) {
-    exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = expandButton.disabled = !available;
-    bluebeamButton.disabled = !available || exportingPdf;
-    syncPsdExport();
+  function setDrawingOutputAvailable(available, ready = false) {
+    expandButton.disabled = !available;
+    exportPanel.setAvailable(available, ready && settings.view === 'plan' ? floorCount() : 0);
   }
   function queueDrawing() {
     saveDrawing();
     setDrawingOutputAvailable(false);
-    $('printFloorSet').disabled = true;
     clearTimeout(timer);
     timer = 0;
     const revision = ++renderRevision;
@@ -1976,7 +1931,7 @@ const openDrawingWorkspace = (() => {
         (drag.x * 25.4) / DRAWING_PIXELS_PER_INCH,
         (drag.y * 25.4) / DRAWING_PIXELS_PER_INCH
       );
-    else if (loading.hidden) setDrawingOutputAvailable(rendered.populated);
+    else if (loading.hidden) setDrawingOutputAvailable(rendered.populated, true);
     drag = null;
     sheet.dataset.dragging = 'false';
   });
@@ -2031,9 +1986,9 @@ const openDrawingWorkspace = (() => {
   }
 
   function vectorDrawingSheet({
-    includePaper = exportPaper.checked,
-    includeAnnotations = exportAnnotations.checked,
-    chunkSize = exportPaths.value === 'individual' ? 1 : 256
+    includePaper = true,
+    includeAnnotations = true,
+    chunkSize = 256
   } = {}) {
     const { width, height } = paperDimensions();
     const root = svgElement('svg', {
@@ -2113,108 +2068,6 @@ const openDrawingWorkspace = (() => {
     const paper = customPapers.get(settings.paper);
     return `${fileStem(sheetTitle())}-${view}-${paper ? fileStem(paper.name) : settings.paper}-1-${rendered.denominator}.${extension}`;
   }
-  const svgExportDialog = $('svgExportDialog'), svgExportError = $('svgExportError');
-  exportButton.onclick = () => {
-    svgExportError.hidden = true;
-    svgExportDialog.showModal();
-  };
-  $('cancelSvgExport').onclick = () => svgExportDialog.close();
-  $('svgExportForm').onsubmit = (event) => {
-    event.preventDefault();
-    if (confirmSvgExport.disabled) return;
-    let svg, filename;
-    try {
-      svg = new XMLSerializer().serializeToString(convertDrawingSvgToPoints(vectorDrawingSheet()));
-      filename = drawingFilename('svg');
-    } catch (error) {
-      console.error('SVG export failed', error);
-      svgExportError.hidden = false;
-      return;
-    }
-    svgExportDialog.close();
-    downloadBlob(svg, 'image/svg+xml', filename);
-  };
-
-  const psdDialog = $('psdExportDialog'), psdForm = $('psdExportForm'), confirmPsd = $('confirmPsdExport'),
-    psdOptions = $('psdExportOptions'), psdDimensions = $('psdDimensions'), psdProgress = $('psdExportProgress'),
-    psdError = $('psdExportError');
-  let psdJob = null;
-  function syncPsdExport(checkSize = false) {
-    psdButton.disabled = exportButton.disabled || Boolean(psdJob);
-    if (!psdDialog.open) return;
-    const ppi = psdPreferences().ppi;
-    const [width, height] = drawingPsdSize(paperDimensions(), ppi);
-    psdDimensions.value = `${width.toLocaleString()} × ${height.toLocaleString()} px`;
-    const fits = drawingPsdCanFit(width, height);
-    confirmPsd.disabled = psdButton.disabled || !fits;
-    if (checkSize) showPsdError(fits ? '' : drawingPsdTooLarge);
-  }
-  function showPsdError(message) {
-    psdError.textContent = message;
-    psdError.hidden = !message;
-  }
-  psdButton.onclick = () => {
-    psdDialog.showModal();
-    syncPsdExport(true);
-  };
-  psdResolution.onchange = () => {
-    saveExportPreferences();
-    syncPsdExport(true);
-  };
-  psdDialog.addEventListener('cancel', () => psdJob?.abort());
-  $('cancelPsdExport').onclick = () => {
-    psdJob?.abort();
-    psdDialog.close();
-  };
-  psdForm.onsubmit = async (event) => {
-    event.preventDefault();
-    if (confirmPsd.disabled) return;
-    const { paper, annotations, ppi } = psdPreferences();
-    const filename = drawingFilename('psd');
-    const signal = (psdJob = new AbortController()).signal;
-    psdOptions.disabled = true;
-    showPsdError('');
-    psdProgress.textContent = 'Preparing sheet artwork…';
-    syncPsdExport();
-    try {
-      await drawingPsdYield();
-      signal.throwIfAborted();
-      const vector = vectorDrawingSheet({ includePaper: paper, includeAnnotations: annotations, chunkSize: 256 });
-      const data = await createDrawingPsd(vector, paperDimensions(), ppi, signal, (message) => { psdProgress.textContent = message; });
-      psdDialog.close();
-      downloadBlob(data, 'image/vnd.adobe.photoshop', filename);
-    } catch (error) {
-      if (!signal.aborted) {
-        showPsdError(error instanceof RangeError ? drawingPsdTooLarge : error.message || 'The PSD could not be prepared.');
-      }
-    } finally {
-      psdJob = null;
-      psdOptions.disabled = false;
-      psdProgress.textContent = '';
-      syncPsdExport();
-      if (!psdDialog.open && !psdButton.disabled) psdButton.focus();
-    }
-  };
-  bluebeamButton.onclick = async () => {
-    exportingPdf = bluebeamButton.disabled = true;
-    bluebeamButton.textContent = 'Preparing PDF…';
-    bluebeamButton.setAttribute('aria-busy', 'true');
-    try {
-      const file = drawingFilename('pdf');
-      const paper = paperDimensions();
-      const svg = vectorDrawingSheet({ includePaper: true, includeAnnotations: true, chunkSize: 256 });
-      const pdf = await createBluebeamPdf(svg, paper);
-      downloadBlob(pdf, 'application/pdf', file);
-    } catch (error) {
-      console.error('PDF export failed', error);
-      if (loading.hidden) status.textContent = 'The PDF could not be prepared. Try exporting again.';
-    } finally {
-      exportingPdf = false;
-      bluebeamButton.disabled = exportButton.disabled;
-      bluebeamButton.textContent = 'PDF for Bluebeam';
-      bluebeamButton.removeAttribute('aria-busy');
-    }
-  };
   const drawingPrintPages = $('drawingPrintPages');
   function printPages(sheets, { width, height }) {
     drawingPrintPages.replaceChildren(...sheets);
@@ -2222,59 +2075,47 @@ const openDrawingWorkspace = (() => {
     pageStyle.textContent = `@page { size: ${width}in ${height}in; margin: 0; }`;
     window.print();
   }
-  printButton.onclick = () => {
-    try {
-      printPages([vectorDrawingSheet({ includePaper: true, includeAnnotations: true, chunkSize: 256 })], paperDimensions());
-    } catch (error) {
-      console.error('Print preparation failed', error);
-      status.textContent = 'The sheet could not be prepared for printing.';
+
+  async function prepareFloorPrint(signal, report) {
+    const paper = paperDimensions(), plans = floorPlans(), revision = renderRevision, camera = viewCamera();
+    const { scale, glazing, mode, pens, bodies } = settings;
+    const denominator = floorSetScale(plans, camera, paper, null, scale, glazing, bodies, pens);
+    const sheets = [];
+    for (const [index, { planes, label }] of plans.entries()) {
+      report(`Preparing floor ${index + 1} of ${plans.length}…`);
+      await yieldForDrawingOutput();
+      signal.throwIfAborted();
+      if (!currentRender(revision)) throw Error('The drawing changed while preparing the floor set. Try printing again.');
+      const frame = renderDrawing(
+        geometryFor(camera, planes, glazing, bodies, pens), camera, planes, paper, denominator, glazing,
+        { x: 0, y: 0, ground: false, center: true }, mode, pens, null, null, sectionView(camera, planes)
+      );
+      const page = floorView(frame, `${sheetTitle()} · ${label}`, 0, 0, true);
+      page.setAttribute('width', paper.width + 'in');
+      page.setAttribute('height', paper.height + 'in');
+      page.setAttribute('viewBox', `0 0 ${paper.width * DRAWING_PIXELS_PER_INCH} ${paper.height * DRAWING_PIXELS_PER_INCH}`);
+      outlineDrawingLabels(page);
+      sheets.push(page);
     }
-  };
-  $('printFloorSet').onclick = async () => {
-    if (!geometry || settings.view !== 'plan') return;
-    const button = $('printFloorSet'),
-      paper = paperDimensions(),
-      plans = floorPlans(),
-      revision = renderRevision,
-      camera = viewCamera(),
-      { scale, glazing, mode, pens, bodies } = settings;
-    printingFloorSet = button.disabled = true;
-    button.textContent = 'Preparing floor set…';
-    try {
-      const denominator = floorSetScale(plans, camera, paper, null, scale, glazing, bodies, pens);
-      const sheets = [];
-      for (const { planes, label } of plans) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        if (!currentRender(revision)) return;
-        const frame = renderDrawing(
-          geometryFor(camera, planes, glazing, bodies, pens),
-          camera,
-          planes,
-          paper,
-          denominator,
-          glazing,
-          { x: 0, y: 0, ground: false, center: true },
-          mode,
-          pens,
-          null, null, sectionView(camera, planes)
-        );
-        const page = floorView(frame, sheetTitle() + ' \u00b7 ' + label, 0, 0, true);
-        page.setAttribute('width', paper.width + 'in');
-        page.setAttribute('height', paper.height + 'in');
-        page.setAttribute('viewBox', `0 0 ${paper.width * DRAWING_PIXELS_PER_INCH} ${paper.height * DRAWING_PIXELS_PER_INCH}`);
-        outlineDrawingLabels(page);
-        sheets.push(page);
-      }
-      if (currentRender(revision)) printPages(sheets, paper);
-    } catch (error) {
-      console.error('Floor set failed', error);
-      status.textContent = 'The floor set could not be prepared.';
-    } finally {
-      printingFloorSet = false;
-      button.disabled = !loading.hidden;
-      button.textContent = 'Print floor set';
-    }
-  };
+    return sheets;
+  }
+
+  const exportPanel = createSheetExportPanel({
+    storageKey: storageKey + '-export',
+    getSheet() {
+      const paper = paperDimensions(), preset = customPapers.get(settings.paper),
+        label = preset?.name ?? paperPicker.selectedOptions[0].textContent.split(' · ')[0],
+        unit = preset?.unit ?? (settings.paper.startsWith('a') ? 'mm' : 'in'),
+        factor = unit === 'mm' ? 25.4 : 1;
+      const size = [paper.width, paper.height].map((side) =>
+        (side * factor).toLocaleString(undefined, { maximumFractionDigits: 2 })).join(' × ');
+      return { title: sheetTitle(), view: $('sheetViewContext').textContent, paper, paperLabel: `${label} · ${size} ${unit}`, scale: settings.scale };
+    },
+    artwork: vectorDrawingSheet,
+    filename: drawingFilename,
+    prepareFloors: prepareFloorPrint,
+    printSheets: printPages
+  });
   window.addEventListener('afterprint', () => {
     pageStyle.textContent = '';
     document.body.classList.remove('printing-drawing');

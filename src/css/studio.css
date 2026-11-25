@@ -628,36 +628,99 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   .drawing-paper::before, .drawing-paper::after, .workbench-fragments, #studioCredits { display: none; }
 }
 
-#studioCredits, #customPaperDialog, .sheet-export-dialog {
+#studioCredits, #customPaperDialog {
   max-width: min(34rem, calc(100vw - 4rem));
   padding: 24px;
   background: var(--paper);
   color: var(--ink);
   border: 2px solid var(--accent);
 }
-#studioCredits::backdrop, #customPaperDialog::backdrop, .sheet-export-dialog::backdrop { background: #201724a3; }
+#studioCredits::backdrop, #customPaperDialog::backdrop, #sheetExport::backdrop { background: #201724a3; }
 #customPaperDialog form { display: grid; gap: 12px; }
 #customPaperDialog h2, #customPaperDialog p { margin: 0; }
 #customPaperDialog label { display: grid; gap: 4px; font-weight: 650; }
 #customPaperDialog input, #customPaperDialog select { min-width: 0; padding: 6px; }
 .custom-paper-dimensions { display: grid; grid-template-columns: 1fr 1fr minmax(0, 100px); gap: 8px; }
 .dialog-actions { display: flex; justify-content: end; gap: 8px; }
-#customPaperError, #svgExportError, #psdExportError { color: #812329; }
-.sheet-export-dialog {
+#customPaperError, #exportError { color: #812329; }
+
+#sheetExport {
   box-sizing: border-box;
-  width: min(31rem, calc(100% - 24px));
+  width: min(44rem, calc(100% - 24px));
   max-width: none;
   max-height: calc(100dvh - 24px);
-  padding: clamp(14px, 4vw, 24px);
+  padding: 0;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 #21162e50;
 }
-.sheet-export-dialog[open], .sheet-export-dialog form { display: flex; flex-direction: column; }
-.sheet-export-dialog form { min-height: 0; gap: 12px; }
-.sheet-export-dialog h2 { flex-shrink: 0; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.svg-export-content { display: grid; min-height: 0; gap: 12px; padding: 3px; overflow: auto; }
-.sheet-export-dialog .dialog-actions { flex-shrink: 0; }
-.svg-export-options, .psd-export-options { display: grid; gap: 7px; }
-.svg-export-options label, .psd-export-options label { margin: 0; font-weight: 650; }
-.sheet-export-dialog select {
+#sheetExportForm {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100dvh - 26px);
+}
+#sheetExport [hidden] { display: none; }
+#sheetExport :is(h2, h3, p) { margin: 0; }
+.export-header {
+  display: grid;
+  gap: 4px;
+  padding: 16px 20px;
+  background: #292035;
+  color: #f6eff8;
+  border-inline-start: 5px solid #dced62;
+  overflow-wrap: anywhere;
+}
+#sheetExportTitle { margin-block-end: 4px; font-size: 22px; line-height: 1.15; }
+.export-sheet-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#exportSheetContext { font: 12px/1.4 var(--mono); color: #ded1e5; }
+.export-workspace {
+  display: grid;
+  grid-template-columns: minmax(132px, 1fr) minmax(0, 2.8fr);
+  min-height: 0;
+  overflow: auto;
+}
+.export-formats {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 14px 10px;
+  background: #eae2ed;
+  border-inline-end: 1px solid #b1a6b6;
+}
+.export-formats button {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+  text-align: start;
+  border: 1px solid transparent;
+  border-inline-start-width: 3px;
+  background: transparent;
+  color: var(--ink);
+}
+.export-formats button span { font: 700 13px/1.1 var(--mono); }
+.export-formats button small { font-size: 12px; font-weight: 500; }
+.export-formats button[aria-selected='true'], .export-formats button[aria-selected='true']:hover {
+  border-color: #826a93;
+  border-inline-start-color: var(--accent);
+  background: var(--paper);
+}
+.export-format {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 240px;
+  padding: 18px 20px;
+}
+.export-format:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.export-format h3 { font-size: 17px; }
+.export-format .hint { margin: 0; }
+.export-options { display: grid; gap: 8px; padding: 0; margin: 3px 0 0; border: 0; min-width: 0; }
+.export-options :is(label, legend) { margin: 0; font-weight: 650; }
+.export-options legend { padding: 0 0 5px; }
+.export-options input[type='radio'] { accent-color: var(--accent); }
+.export-options select {
+  width: 100%;
   min-width: 0;
   padding: 6px 7px;
   border: 1px solid var(--control-border);
@@ -665,18 +728,35 @@ main:has(.drop-zone:not([hidden])) .drawing-workspace { visibility: hidden; }
   color: var(--ink);
   font: inherit;
 }
-.illustrator-steps { padding: 10px 12px; border-inline-start: 3px solid var(--accent); background: #eee9ef; }
-.illustrator-steps h3 { margin: 0; font-size: 14px; }
-.illustrator-steps ol { margin: 6px 0 0; padding-inline-start: 21px; }
+#psdDimensions { font-variant-numeric: tabular-nums; color: var(--muted); }
+.illustrator-steps { padding: 8px 10px; border-inline-start: 3px solid var(--accent); background: #eee9ef; }
+.illustrator-steps ol { margin: 8px 0 0; padding-inline-start: 21px; }
 .illustrator-steps li + li { margin-block-start: 4px; }
-#svgExportError { margin: 0; }
-.psd-export-options { border: 0; margin: 0; padding: 2px 3px; min-inline-size: 0; }
-#psdExportDialog { width: min(25rem, calc(100% - 24px)); }
-#psdExportForm p { margin: 0; }
-#psdExportProgress:empty { display: none; }
-#psdDimensions { font-variant-numeric: tabular-nums; margin-block: 1px 5px; }
+.export-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 12px 18px;
+  border-block-start: 1px solid #b1a6b6;
+}
+.export-feedback { flex: 1 1 min(220px, 100%); font-size: 12px; }
+.export-feedback:not(:has(p:not(:empty))) { flex-basis: 0; }
+.export-feedback p { overflow-wrap: anywhere; }
+.export-footer .dialog-actions { margin-inline-start: auto; }
+@media (max-width: 620px) {
+  .export-workspace { grid-template-columns: minmax(0, 1fr); }
+  .export-formats { grid-template-columns: repeat(2, minmax(0, 1fr)); border-inline-end: 0; border-block-end: 1px solid #b1a6b6; }
+  .export-format { min-height: 0; padding: 14px; }
+  .export-header { padding: 12px 14px; }
+  .export-footer { padding: 9px 14px; }
+}
+@media (forced-colors: active) {
+  .export-formats button[aria-selected='true'] { border-inline-start-color: Highlight; }
+}
+
 #studioCredits form { float: right; margin-left: 12px; }
 #studioCredits li { margin-block: 8px; }
 @media print {
-  .sheet-export-dialog[open] { display: none; }
+  #sheetExport[open] { display: none; }
 }

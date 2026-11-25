@@ -9,18 +9,22 @@ function selectInspectorTab(tab, focus = false) {
   if (focus) tab.focus();
 }
 
-for (const list of document.querySelectorAll('.inspector-tabs')) {
+function bindWorkspaceTabs(list, select = selectInspectorTab) {
   const tabs = [...list.querySelectorAll('[role="tab"]')];
-  for (const tab of tabs) tab.onclick = () => selectInspectorTab(tab);
+  for (const tab of tabs) tab.onclick = () => select(tab);
   list.onkeydown = (event) => {
     const index = tabs.indexOf(event.target);
     if (index < 0) return;
+    const vertical = list.getAttribute('aria-orientation') === 'vertical';
     const destination = {
-      ArrowLeft: mod(index - 1, tabs.length), ArrowRight: mod(index + 1, tabs.length),
+      [vertical ? 'ArrowUp' : 'ArrowLeft']: mod(index - 1, tabs.length),
+      [vertical ? 'ArrowDown' : 'ArrowRight']: mod(index + 1, tabs.length),
       Home: 0, End: tabs.length - 1
     }[event.key];
     if (destination === undefined) return;
     event.preventDefault();
-    selectInspectorTab(tabs[destination], true);
+    select(tabs[destination], true);
   };
 }
+
+for (const list of document.querySelectorAll('.inspector-tabs')) bindWorkspaceTabs(list);

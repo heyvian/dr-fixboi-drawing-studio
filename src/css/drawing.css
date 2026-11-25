@@ -34,7 +34,7 @@
  grid-template-rows: repeat(3, 35px);
  gap: 3px;
 }
-.view-compass[hidden], .drawing-controls [hidden], #printFloorSet[hidden] { display: none; }
+.view-compass[hidden], .drawing-controls [hidden] { display: none; }
 .drawing-orbit { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; }
 .drawing-orbit input { grid-column: 1/-1; width: 100%; margin: 0; }
 .drawing-plane-offset-tools { display: flex; align-items: center; gap: 5px; min-width: 0; }

@@ -142,8 +142,6 @@
 .stage-title span { color: #5d4866; font: 11px/1.2 var(--mono); }
 .stage-title span:empty { display: none; }
 .stage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.drawing-stage .stage-header .export-tools { align-items: center; border: 0; padding: 0; }
-.drawing-stage .stage-header .export-tools button { min-height: 32px; }
 .drawing-workspace :is(.drawing-stage, .nav-stage) .drawing-toolbar {
   justify-content: space-between;
   align-items: center;
