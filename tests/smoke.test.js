@@ -18,7 +18,7 @@ const { version } = require('../package.json');
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   const appUrl = process.env.APP_URL || pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
   await page.goto(appUrl);
-  assert.strictEqual(await page.locator('.app-identity #appVersion').textContent(), `v${version}`);
+  assert.strictEqual(await page.locator('.app-identity #appVersion').textContent(), `V${version}`);
 
   const shot = async (name) => process.env.SHOT && (await page.screenshot({ path: path.join(process.env.SHOT, name + '.png') }));
   const svgDialog = page.getByRole('dialog', { name: 'Export SVG' });

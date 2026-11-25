@@ -1,6 +1,6 @@
 {
   "name": "dr-fixboi-drawing-studio",
-  "version": "0.3.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Standalone drawing app for Rhino models",
   "scripts": {
