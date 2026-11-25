@@ -306,8 +306,17 @@
 .pen-sample { display: grid; align-items: center; min-height: 9px; padding: 1px 3px; background: var(--sample-paper); }
 .pen-sample::before { content: ''; width: 100%; height: var(--sample-width); background: var(--sample-ink); }
 .inspector-pane .pen-width-note { padding-block: 4px 0; }
-.inspector-pane .depth-adjust:not([open]) { display: block; }
-.inspector-pane .depth-adjust summary { margin-bottom: 4px; }
+.inspector-pane .depth-adjust { gap: 8px; }
+.depth-boundary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 7px;
+  padding-block: 4px;
+}
+.depth-boundary label { grid-column: 1 / -1; font-size: 12px; }
+.depth-boundary .depth-percent { display: flex; align-items: center; gap: 3px; }
+.inspector-pane .depth-percent input { width: 62px; }
 .inspector-pane #drawingPlanes:empty { display: none; }
 .cut-projection { border-block-start: 1px solid #b9aebd; padding-block-start: 9px; }
 .sheet-contrast p { margin-block: 0; }

@@ -6,8 +6,8 @@ const vm = require('node:vm');
 const renderer = ['util.js', 'contrast.js', 'drawing-core.js', 'drawing-render.js']
   .map((file) => fs.readFileSync(path.join(__dirname, '..', 'src', 'js', file), 'utf8'))
   .join('\n');
-const { drawingPens, renderDrawing, sectionHatch, paperContrast, accessibleInk } = vm.runInNewContext(
-  renderer + '\n({ drawingPens, renderDrawing, sectionHatch, paperContrast, accessibleInk });'
+const { drawingPens, drawingDepthBand, renderDrawing, sectionHatch, paperContrast, accessibleInk } = vm.runInNewContext(
+  renderer + '\n({ drawingPens, drawingDepthBand, renderDrawing, sectionHatch, paperContrast, accessibleInk });'
 );
 
 function drawSteepFace({ cover = false, segments = 1 } = {}) {
@@ -111,5 +111,11 @@ for (const [ink, paper, opacity] of [['#c9bec4', '#f1efec', 0.82], ['#213040', '
   const proposed = accessibleInk(ink, paper, 3, opacity);
   assert(proposed && proposed !== ink && paperContrast(proposed, paper, opacity) >= 3, 'choose a visible tint or shade');
 }
+
+const legacyPens = drawingPens({ distanceFrom: 10, distanceTo: 100 });
+assert.deepEqual(Array.from(legacyPens.depthBreaks), [40, 70], 'older spacing restores its original boundaries');
+const independentPens = drawingPens({ depthBreaks: [50, 80] });
+assert.deepEqual(Array.from(independentPens.depthBreaks), [50, 80]);
+assert.deepEqual([49, 50, 79, 80].map((value) => drawingDepthBand(independentPens.depthBreaks, value)), [0, 1, 1, 2]);
 
 console.log('linework tests passed');

@@ -68,7 +68,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.3.2</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.4.0</span></p>
         </div>
       </div>
     </header>
@@ -375,24 +375,15 @@
                   <p class="hint pen-width-note">Widths stay fixed on paper when the scale changes.</p>
                 </div>
                 <fieldset id="drawingDistanceFields" class="drawing-distance">
-                  <legend>Pen bands by visible depth</legend>
-                  <div class="depth-endpoints" aria-hidden="true"><span>Nearest</span><span>Farthest</span></div>
+                  <legend>Pen ranges by depth</legend>
+                  <div class="depth-endpoints" aria-hidden="true"><span>0% nearest</span><span>100% farthest</span></div>
                   <div id="drawingDepthStrip" class="depth-strip" aria-hidden="true"></div>
                   <ul id="drawingDepthBands" class="depth-bands" aria-label="Pen widths and depth ranges"></ul>
-                  <details id="drawingDepthAdjust" class="depth-adjust inspector-details">
-                    <summary>Assign depth ranges</summary>
-                    <div class="depth-endpoints">
-                      <label for="drawingDistanceFrom">Even spacing starts at</label>
-                      <output id="drawingDistanceFromOut" for="drawingDistanceFrom">0%</output>
-                    </div>
-                    <input id="drawingDistanceFrom" type="range" min="0" max="90" step="1" value="0" aria-describedby="drawingDepthHelp" />
-                    <div class="depth-endpoints">
-                      <label for="drawingDistanceTo">Even spacing ends at</label>
-                      <output id="drawingDistanceToOut" for="drawingDistanceTo">100%</output>
-                    </div>
-                    <input id="drawingDistanceTo" type="range" min="10" max="100" step="1" value="100" aria-describedby="drawingDepthHelp" />
-                    <p class="hint" id="drawingDepthHelp">Pens split this span evenly. Move the start right to give the thickest pen more depth, or the end left to give the thinnest pen more depth.</p>
-                  </details>
+                  <div id="drawingDepthAdjust" class="depth-adjust">
+                    <p class="hint" id="drawingDepthHelp">Drag or type the depth where one pen gives way to the next.</p>
+                    <div id="drawingDepthBoundaries"></div>
+                    <button type="button" id="drawingDepthReset">Space evenly</button>
+                  </div>
                 </fieldset>
               </div>
               <div id="drawingRhinoPens" hidden>

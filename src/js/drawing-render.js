@@ -418,18 +418,15 @@ function renderDrawing(
     near = Math.max(near, mark.depth);
   }
   // Base the intervals on visible strokes so a clip or a cropped sheet still uses the pen range.
-  const [bandStart, bandEnd] = drawingPenDepthRange(pens).map((percent) => percent / 100);
   for (const mark of marks) {
     const { ink, texture, silhouetteInk, componentInk } = receding && mark.depth < -1e-7 ? receding : front;
-    const position = near > far ? (near - mark.depth) / (near - far) : 0,
-      // Strokes nearer than the band start use the heaviest pen and those beyond its end the lightest.
-      banded = clamp((position - bandStart) / (bandEnd - bandStart), 0, 1);
+    const position = near > far ? (near - mark.depth) / (near - far) : 0;
     const index = layerIndices ? (layerIndices.get(mark.component) ?? 0)
       : pens.mode === 'component'
         ? pens.components[mark.component]
         : ranked[
             pens.mode === 'distance'
-              ? Math.min(count - 1, Math.floor(banded * count))
+              ? drawingDepthBand(pens.depthBreaks, position * 100)
               : Math.round((count - 1) * mark.detail)
           ];
     if (mark.texture) {

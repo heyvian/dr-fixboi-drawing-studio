@@ -374,8 +374,20 @@ function drawingPensByWeight(widths) {
   return widths.map((_, index) => index).sort((a, b) => widths[b] - widths[a]);
 }
 
-function drawingPenDepthRange(pens) {
-  return [Math.min(pens.distanceFrom, pens.distanceTo - 5), Math.max(pens.distanceTo, pens.distanceFrom + 5)];
+function drawingDepthBoundaries(count, saved) {
+  const boundaries = saved?.depthBreaks;
+  if (Array.isArray(boundaries) && boundaries.length === count - 1 && boundaries.every((value, i) =>
+    Number.isFinite(value) && value >= (boundaries[i - 1] ?? 0) + 1 - 1e-8 && value <= 99)) return [...boundaries];
+  // Recover the actual pen boundaries from the old two-slider settings.
+  const from = Number.isFinite(saved?.distanceFrom) ? clamp(Math.round(saved.distanceFrom), 0, 90) : 0;
+  const to = Number.isFinite(saved?.distanceTo) ? clamp(Math.round(saved.distanceTo), 10, 100) : 100;
+  const start = Math.min(from, to - 5), end = Math.max(to, from + 5);
+  return Array.from({ length: count - 1 }, (_, i) => start + (end - start) * (i + 1) / count);
+}
+
+function drawingDepthBand(boundaries, percent) {
+  for (const [i, boundary] of boundaries.entries()) if (percent < boundary) return i;
+  return boundaries.length;
 }
 
 function drawingPenPalette(pens, model) {
@@ -420,9 +432,7 @@ function drawingPens(saved = {}) {
     openEdges: saved?.openEdges !== false,
     creases: saved?.creases !== false,
     creaseAngle: Number.isFinite(saved?.creaseAngle) ? clamp(Math.round(saved.creaseAngle), 5, 90) : 10,
-    // Divide this part of the visible depth evenly among the pens and extend the end bands to 0 and 100%.
-    distanceFrom: Number.isFinite(saved?.distanceFrom) ? clamp(Math.round(saved.distanceFrom), 0, 90) : 0,
-    distanceTo: Number.isFinite(saved?.distanceTo) ? clamp(Math.round(saved.distanceTo), 10, 100) : 100,
+    depthBreaks: drawingDepthBoundaries(count, saved),
     paper: paintHex(saved?.paper) || '#ffffff',
     colors: DRAWING_PEN_PRESETS[count].map((_, i) => paintHex(saved?.colors?.[i]) || '#43534c'),
     widths: DRAWING_PEN_PRESETS[count].map((width, i) =>

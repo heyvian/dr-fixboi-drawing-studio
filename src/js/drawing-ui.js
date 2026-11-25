@@ -1297,30 +1297,76 @@ const openDrawingWorkspace = (() => {
     return row;
   }
 
+  function depthBoundaryLimits(boundaries, index) {
+    return [Math.ceil(((boundaries[index - 1] ?? 0) + 1) * 10) / 10,
+      Math.floor(((boundaries[index + 1] ?? 100) - 1) * 10) / 10];
+  }
+  const depthControls = Array.from({ length: DRAWING_PEN_PRESETS.length - 2 }, (_, index) => {
+    const row = document.createElement('div'), label = document.createElement('label'),
+      slider = document.createElement('input'), field = document.createElement('span'), number = document.createElement('input'),
+      unit = document.createElement('span');
+    row.className = 'depth-boundary';
+    slider.id = `depthBoundary${index + 1}`;
+    slider.type = 'range';
+    Object.assign(slider, { min: 1, max: 99, step: 0.1 });
+    slider.setAttribute('aria-describedby', 'drawingDepthHelp');
+    label.htmlFor = slider.id;
+    number.id = `depthBoundaryValue${index + 1}`;
+    number.type = 'number';
+    number.step = 'any';
+    field.className = 'depth-percent';
+    unit.textContent = '%';
+    unit.setAttribute('aria-hidden', 'true');
+    function changeBoundary(event) {
+      const boundaries = settings.pens.depthBreaks;
+      const value = event.target.valueAsNumber;
+      if (Number.isFinite(value)) {
+        boundaries[index] = clamp(Math.round(value * 10) / 10, ...depthBoundaryLimits(boundaries, index));
+        queueDrawing();
+      }
+      syncPenDepth();
+    }
+    slider.oninput = number.onchange = changeBoundary;
+    field.append(number, unit);
+    row.append(label, slider, field);
+    $('drawingDepthBoundaries').append(row);
+    return { row, label, slider, number };
+  });
+  $('drawingDepthReset').onclick = () => {
+    settings.pens.depthBreaks = drawingDepthBoundaries(settings.pens.widths.length);
+    syncPenDepth();
+    queueDrawing();
+  };
+
   function syncPenDepth() {
     const pens = settings.pens;
     if (pens.mode !== 'distance') return;
-    const [start, end] = drawingPenDepthRange(pens);
-    const { widths } = pens;
-    const ranked = drawingPensByWeight(widths);
+    const { widths, depthBreaks } = pens, ranked = drawingPensByWeight(widths);
     const row = $('drawingDepthBands'), strip = $('drawingDepthStrip');
-    $('drawingDepthAdjust').hidden = ranked.length === 1;
-    $('drawingDistanceFrom').value = start;
-    $('drawingDistanceTo').value = end;
-    $('drawingDistanceFromOut').textContent = `${start}%`;
-    $('drawingDistanceToOut').textContent = `${end}%`;
+    $('drawingDepthAdjust').hidden = !depthBreaks.length;
     row.replaceChildren();
     strip.replaceChildren();
     const percent = (depth) => `${Number(depth.toFixed(1))}%`;
-    const boundary = (i) => start + (end - start) * i / ranked.length;
     ranked.forEach((index, band) => {
-      const from = band === 0 ? 0 : boundary(band);
-      const to = band === ranked.length - 1 ? 100 : boundary(band + 1);
+      const from = depthBreaks[band - 1] ?? 0, to = depthBreaks[band] ?? 100;
       const segment = document.createElement('span');
       segment.style.flexBasis = `${to - from}%`;
       segment.style.setProperty('--depth-stroke', `${Math.max(1, 7 * widths[index] / widths[ranked[0]])}px`);
       strip.append(segment);
       row.append(penLegendRow(`Pen ${index + 1} · ${widths[index].toFixed(2)} mm`, `${percent(from)}–${percent(to)}`));
+    });
+    depthControls.forEach(({ row, label, slider, number }, index) => {
+      const value = depthBreaks[index];
+      row.hidden = value === undefined;
+      if (row.hidden) return;
+      const first = ranked[index] + 1, next = ranked[index + 1] + 1;
+      label.textContent = `Pen ${first} to Pen ${next}`;
+      label.title = `Where Pen ${first} ends and Pen ${next} begins`;
+      const [min, max] = depthBoundaryLimits(depthBreaks, index);
+      Object.assign(number, { min, max });
+      number.setAttribute('aria-label', `Pen ${first} to Pen ${next} boundary in percent`);
+      slider.value = number.value = Number(value.toFixed(1));
+      slider.setAttribute('aria-valuetext', percent(value));
     });
   }
 
@@ -1434,17 +1480,6 @@ const openDrawingWorkspace = (() => {
     syncPenControls();
     queueDrawing();
   };
-  // The two distance thresholds push each other so they always stay at least 5% apart.
-  for (const [id, key] of [['drawingDistanceFrom', 'distanceFrom'], ['drawingDistanceTo', 'distanceTo']])
-    $(id).oninput = (event) => {
-      const pens = settings.pens,
-        value = Number(event.target.value);
-      pens[key] = value;
-      if (key === 'distanceFrom') pens.distanceTo = Math.max(pens.distanceTo, value + 5);
-      else pens.distanceFrom = Math.min(pens.distanceFrom, value - 5);
-      syncPenDepth();
-      queueDrawing();
-    };
   $('drawingPenCount').onchange = (event) => {
     settings.pens = drawingPens({
       ...settings.pens,
