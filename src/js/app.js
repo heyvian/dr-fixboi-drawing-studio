@@ -1,5 +1,5 @@
-// App bootstrap: wires file selection, drag and drop, import status messages and the layer list to
-// the drawing workspace (drawing-ui.js).
+// App bootstrap for file and project operations, the model layer list, and the handoff between
+// the 3D viewer and the drawing workspace.
 
 (() => {
   const status = $('importStatus'),
@@ -7,12 +7,15 @@
     fileMenuToggle = $('fileMenuToggle'),
     dropZone = $('dropZone'),
     fileInput = $('fileInput'),
+    replaceRhinoInput = $('replaceRhinoInput'),
     controls = $('drawingControls'),
     workspace = $('drawingsPhase'),
     fileName = $('fileName'),
     layerList = $('layerList'),
     unitSelect = $('unitSelect'),
-    saveProject = $('saveProject');
+    saveProject = $('saveProject'),
+    replaceRhinoModel = $('replaceRhinoModel'),
+    projectModelSource = $('projectModelSource');
   let current = null, // the model currently drawn
     lastFile = null, // remembered so changing the unit setting can re-read it
     projectId = null,
@@ -46,6 +49,7 @@
       status.append(list);
     }
   }
+  const canReplaceRhino = () => Boolean(current && /\.3dm$/i.test(lastFile?.name ?? ''));
   function setImportBusy(value) {
     busy = value;
     workspace.setAttribute('aria-busy', String(value));
@@ -54,6 +58,9 @@
       control.disabled = value;
     unitSelect.disabled = value || !lastFile;
     saveProject.disabled = value || !current;
+    replaceRhinoModel.disabled = value || !canReplaceRhino();
+    projectModelSource.hidden = !lastFile;
+    projectModelSource.textContent = lastFile ? 'Source model · ' + lastFile.name : '';
   }
   function loadingModel(message, done, total) {
     say(message, 'loading');
@@ -69,17 +76,9 @@
   const yieldForImport = () => new Promise((resolve) => setTimeout(resolve, 20));
 
   // Hand a finished model to the workspace and rebuild the layer list.
-  function show(model, label, identity, reinterpret = false, project = null) {
+  function show(model, label, { identity, reinterpret = false, project = null, replacement = null } = {}) {
     const unitRatio = reinterpret ? model.units.metresPerUnit / current.units.metresPerUnit : 1;
-    if (reinterpret) {
-      const previousLayers = new Map(current.layers.map((layer) => [layer.key, layer]));
-      for (const layer of model.layers) {
-        const previous = previousLayers.get(layer.key);
-        if (!previous) continue;
-        layer.visible = previous.visible;
-        layer.overrideColor = previous.overrideColor;
-      }
-    }
+    const reuse = Boolean(reinterpret || replacement);
     current = model;
     controls.inert = false;
     dropZone.hidden = true;
@@ -87,9 +86,9 @@
     fileName.hidden = false;
     fileName.textContent = label;
     fileName.title = label;
-    openDrawingWorkspace(model, !reinterpret, identity, project?.drawings);
+    openDrawingWorkspace(model, { fresh: !reuse, identity, project: project?.drawings, replace: Boolean(replacement) });
     buildLayerList(model);
-    if (reinterpret) {
+    if (reuse) {
       if (viewer.ok) viewer.setModel(model, false, unitRatio);
     } else if (viewer.ok) {
       for (const id of ['modeNav', 'modeDraw']) $(id).disabled = false;
@@ -116,7 +115,8 @@
     const height = model.height > 0 && model.height < 1
       ? `${(model.height * 1000).toLocaleString(undefined, { maximumSignificantDigits: 4 })} mm`
       : `${model.height.toFixed(1)} m`;
-    const summary = `${label}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${height} tall · ${unitNote}.`;
+    const source = replacement ? `Model updated from ${replacement}` : label;
+    const summary = `${source}: ${model.layers.length} layer${model.layers.length === 1 ? '' : 's'}, ${model.triangleCount.toLocaleString()} triangles, ${height} tall · ${unitNote}.`;
     if (model.warnings.length) say(summary, 'warn', model.warnings);
     else say(summary);
   }
@@ -130,7 +130,7 @@
   };
 
   function refreshLayerGeometry(model) {
-    openDrawingWorkspace(model, false);
+    openDrawingWorkspace(model, { fresh: false });
     if (viewer.ok) viewer.setModel(model, false);
   }
 
@@ -190,7 +190,7 @@
   }
 
   // Read a user-chosen model or a model embedded in a project.
-  async function readModel(file, unitChoice) {
+  async function readModel(file, unitChoice, options) {
     if (!file) {
       loadingModel('Building the sample model…');
       await yieldForImport();
@@ -210,7 +210,7 @@
     loadingModel('Reading ' + file.name + '…');
     const bytes = new Uint8Array(await file.arrayBuffer());
     return importRhino(rhino, bytes, base, unitChoice, (done, total) =>
-      loadingModel(`Building geometry… ${done} of ${total} objects`, done, total));
+      loadingModel(`Building geometry… ${done} of ${total} objects`, done, total), options);
   }
 
   async function openFile(file, { unitChoice = 'auto', reinterpret = false } = {}) {
@@ -224,12 +224,13 @@
         project = await readDrawingProject(file);
       }
       const modelFile = project ? project.modelFile : file;
-      const model = await readModel(modelFile, project?.units ?? unitChoice);
+      const reference = reinterpret ? current.sourceReference : project?.sourceReference;
+      const model = await readModel(modelFile, project?.units ?? unitChoice, { reference, reinterpret });
       loadingModel('Preparing the model view…');
       await yieldForImport();
       const identity = project ? `project:${project.id}` : JSON.stringify([file.name, file.size, file.lastModified]);
-      const label = reinterpret && projectName ? `${projectName}.fixboi` : file.name;
-      show(model, label, identity, reinterpret, project);
+      const label = reinterpret ? fileName.textContent : file.name;
+      show(model, label, { identity, reinterpret, project });
       lastFile = modelFile;
       if (!reinterpret) {
         projectId = project?.id ?? null;
@@ -257,13 +258,35 @@
       const model = await readModel(null);
       loadingModel('Preparing the model view…');
       await yieldForImport();
-      show(model, model.name, 'sample:valentine');
+      show(model, model.name, { identity: 'sample:valentine' });
       lastFile = null;
       projectId = null;
       projectName = '';
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function replaceRhinoFile(file) {
+    if (busy || !file || !canReplaceRhino()) return;
+    if (!/\.3dm$/i.test(file.name)) {
+      say('Choose a Rhino .3dm file to replace the model.', 'error');
+      return;
+    }
+    setImportBusy(true);
+    try {
+      // Parse the revision first so an unreadable file leaves the working model and project intact.
+      const model = await readModel(file, 'auto', { reference: current.sourceReference });
+      const name = projectName || current.name;
+      show(model, fileName.textContent, { replacement: file.name });
+      projectName = name;
+      lastFile = file;
+    } catch (error) {
+      console.error('Rhino replacement failed', error);
+      say('Could not replace the Rhino model: ' + error.message, 'error');
     } finally {
       setImportBusy(false);
     }
@@ -277,6 +300,7 @@
         drawings: openDrawingWorkspace.projectState(),
         mode,
         units: current.units.choice,
+        sourceReference: current.sourceReference,
         navigation: viewer.ok ? viewer.projectState() : null
       }, lastFile);
       const name = (projectName || current.name).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'Drawing Studio';
@@ -372,6 +396,14 @@
   }
   $('openFile').onclick = () => pickFile('.3dm,.obj');
   $('openProject').onclick = () => pickFile('.fixboi');
+  replaceRhinoModel.onclick = () => {
+    closeFileMenu(true);
+    replaceRhinoInput.click();
+  };
+  replaceRhinoInput.onchange = () => {
+    replaceRhinoFile(replaceRhinoInput.files[0]);
+    replaceRhinoInput.value = '';
+  };
   $('openFileZone').onclick = () => pickFile('.3dm,.obj,.fixboi');
   $('loadSample').onclick = () => {
     closeFileMenu(true);

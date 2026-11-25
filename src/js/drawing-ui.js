@@ -151,7 +151,7 @@ const openDrawingWorkspace = (() => {
     }));
     const planes = saved.planes.filter((plane) => plane && Number.isFinite(plane.id) && Number.isFinite(plane.offset) &&
       Number.isFinite(plane.angle) && ['horizontal', 'vertical'].includes(plane.axis)).map(({ id, offset, angle, axis, floor, flip }) =>
-      ({ id, offset, angle: mod(angle, 360), axis, floor: Number.isInteger(floor) ? floor : null, flip: flip === true }));
+      ({ id, offset, angle: mod(angle, 360), axis, floor: Number.isInteger(floor) ? clamp(floor, 0, 59) : null, flip: flip === true }));
     return {
       ...sectionPreferences(saved),
       view: previousElevation ? 'elevation' : viewNames.includes(saved.view) ? saved.view : 'axo',
@@ -213,15 +213,34 @@ const openDrawingWorkspace = (() => {
   const viewsStorageKey = () => storageKey + '-views-' + modelIdentity;
   const activeStorageKey = () => storageKey + '-active-' + modelIdentity;
   const titleFields = [$('drawingTitle'), $('drawingNumber'), $('drawingRevision')];
+  const modelFrameScale = (model) => model.sourceReference?.frameScale ?? model.units.metresPerUnit;
+  let hiddenLayerKeys = new Set(), layerColours = new Map();
+
+  // Update settings for present layers only. Missing layers keep their overrides across revisions.
+  function rememberLayers() {
+    for (const { key, visible, overrideColor } of sourceModel.layers) {
+      if (visible) hiddenLayerKeys.delete(key);
+      else hiddenLayerKeys.add(key);
+      if (overrideColor) layerColours.set(key, overrideColor);
+      else layerColours.delete(key);
+    }
+  }
+  function applyLayers(layers) {
+    for (const layer of layers) {
+      layer.visible = !hiddenLayerKeys.has(layer.key);
+      layer.overrideColor = layerColours.get(layer.key) ?? '';
+    }
+  }
   function currentSnapshot() {
+    rememberLayers();
     return {
       settings,
       base,
       metresPerUnit: sourceModel.units.metresPerUnit,
+      frameScale: modelFrameScale(sourceModel),
       titles: titleFields.map((field) => field.value),
-      hiddenLayers: sourceModel.layers.filter((layer) => !layer.visible).map((layer) => layer.key),
-      layerColours: Object.fromEntries(sourceModel.layers.filter((layer) => layer.overrideColor)
-        .map((layer) => [layer.key, layer.overrideColor]))
+      hiddenLayers: [...hiddenLayerKeys],
+      layerColours: Object.fromEntries(layerColours)
     };
   }
   function projectDrawingState() {
@@ -282,18 +301,19 @@ const openDrawingWorkspace = (() => {
     const camera = snapshot.base;
     base = validSavedCamera(camera) ? structuredClone(camera) : null;
     settings = readDrawingSettings(snapshot.settings);
-    if (Number.isFinite(snapshot.metresPerUnit) && snapshot.metresPerUnit > 0)
-      rescaleCapturedView(sourceModel.units.metresPerUnit / snapshot.metresPerUnit);
+    // Projects saved before model replacement used the source unit scale as their frame scale.
+    const savedScale = snapshot.frameScale ?? snapshot.metresPerUnit;
+    if (Number.isFinite(savedScale) && savedScale > 0)
+      rescaleCapturedView(modelFrameScale(sourceModel) / savedScale);
     titleFields.forEach((field, i) => { field.value = typeof snapshot.titles?.[i] === 'string' ? snapshot.titles[i] : ''; });
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
-    const hidden = new Set(Array.isArray(snapshot.hiddenLayers) ? snapshot.hiddenLayers : []);
-    for (const layer of sourceModel.layers) {
-      layer.visible = !hidden.has(layer.key);
-      // A view saved before recolouring has no colour settings to restore.
-      if (snapshot.layerColours && typeof snapshot.layerColours === 'object')
-        layer.overrideColor = Object.hasOwn(snapshot.layerColours, layer.key) ? paintHex(snapshot.layerColours[layer.key]) : '';
-    }
+    hiddenLayerKeys = new Set(Array.isArray(snapshot.hiddenLayers) ? snapshot.hiddenLayers.filter((key) => typeof key === 'string') : []);
+    // Views from before layer recolouring leave the current colours in place.
+    if (snapshot.layerColours && typeof snapshot.layerColours === 'object')
+      layerColours = new Map(Object.entries(snapshot.layerColours).map(([key, color]) => [key, paintHex(color)])
+        .filter(([, color]) => color));
+    applyLayers(sourceModel.layers);
   }
   function refreshSavedViews(selection = '') {
     viewList.replaceChildren(...savedViews.map(({ name, settings: saved }) => {
@@ -349,7 +369,7 @@ const openDrawingWorkspace = (() => {
     restoreSnapshot(snapshot);
     load.onApplyLayers?.();
     geometry = null;
-    clampPlanes();
+    fillFloors();
     syncSettings();
     load.onOpenSavedView?.();
     queueDrawing();
@@ -404,8 +424,8 @@ const openDrawingWorkspace = (() => {
     (deleted ? $('newView') : [...viewList.children].find((row) => row.dataset.name === name))?.focus();
   };
 
-  // Storeys are measured up from the model's lowest point at the user's storey height.
-  const floorCount = () => clamp(Math.ceil(sourceModel.height / settings.storey - 1e-6), 1, 60);
+  // Storeys are measured from the project's original ground datum.
+  const floorCount = () => clamp(Math.ceil(sourceModel.elevations[1] / settings.storey - 1e-6), 1, 60);
   const currentPlane = () => settings.planes.find((plane) => plane.id === settings.selected);
   function paperDimensions() {
     const [short, long] = paperSizes[settings.paper];
@@ -497,14 +517,16 @@ const openDrawingWorkspace = (() => {
     plane.axis === 'horizontal' && plane.floor != null ? plane.floor * settings.storey : 0;
   const planeHeight = (plane) => floorDatum(plane) + plane.offset;
   const allPlans = () => settings.view === 'plan' && settings.planSheet === 'floors';
-  function offsetLimits(plane) {
+  function offsetLimits(plane, includeCurrent = true) {
     const reach = Math.ceil(sourceModel.reach + 2);
-    return plane.axis === 'horizontal'
+    const [min, max] = plane.axis === 'horizontal'
       ? [
-          Math.min(0, -floorDatum(plane)),
-          Math.ceil(sourceModel.height) - floorDatum(plane)
+          Math.floor(Math.min(0, sourceModel.elevations[0])) - floorDatum(plane),
+          Math.ceil(Math.max(0, sourceModel.elevations[1])) - floorDatum(plane)
         ]
       : [-reach, reach];
+    // An existing cut can legitimately sit outside the extents of a revised model.
+    return includeCurrent ? [Math.min(min, plane.offset), Math.max(max, plane.offset)] : [min, max];
   }
   const lockedOrbit = () => settings.orbitLocked ? base : null;
   function viewCamera() {
@@ -2189,14 +2211,15 @@ const openDrawingWorkspace = (() => {
   function clampPlanes() {
     for (const plane of settings.planes) {
       plane.floor = Number.isInteger(plane.floor) ? clamp(plane.floor, 0, floorCount() - 1) : null;
-      plane.offset = clamp(plane.offset, ...offsetLimits(plane));
+      plane.offset = clamp(plane.offset, ...offsetLimits(plane, false));
     }
   }
   function fillFloors() {
+    const count = settings.planes.reduce((maximum, { floor }) => Math.max(maximum, (floor ?? -1) + 1), floorCount());
     $('drawingFloor').replaceChildren(
       new Option('Project datum', ''),
       ...Array.from(
-        { length: floorCount() },
+        { length: count },
         (_, i) =>
           new Option(
             (i === 0 ? 'Ground floor' : 'Level ' + (i + 1)) +
@@ -2211,13 +2234,21 @@ const openDrawingWorkspace = (() => {
     if (plane) $('drawingFloor').value = plane.floor == null ? '' : String(plane.floor);
   }
 
-  // Called by the app with each imported (or re-filtered) model. 'fresh' marks a different file.
-  function load(model, fresh = true, identity, project = null) {
-    if (!fresh && sourceModel)
-      rescaleCapturedView(model.units.metresPerUnit / sourceModel.units.metresPerUnit);
+  // A replacement is a new set of geometry in the existing project coordinate system. Unit
+  // reinterpretation deliberately rescales the camera because it changes what the units mean.
+  function load(model, { fresh = true, identity, project = null, replace = false } = {}) {
+    const reuse = !fresh && sourceModel && model !== sourceModel;
+    if (reuse) {
+      rememberLayers();
+      applyLayers(model.layers);
+      if (!replace) rescaleCapturedView(modelFrameScale(model) / modelFrameScale(sourceModel));
+    }
     sourceModel = model;
     geometry = null;
+    let restored = false;
     if (fresh) {
+      hiddenLayerKeys = new Set();
+      layerColours = new Map();
       if (identity !== modelIdentity) {
         modelIdentity = identity;
         base = null;
@@ -2238,20 +2269,26 @@ const openDrawingWorkspace = (() => {
       settings.viewHeadings = {};
       settings.sectionCamera = null;
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
-      if (project) restoreProjectDrawings(project);
+      if (project) {
+        restoreProjectDrawings(project);
+        restored = true;
+      }
       else {
         try {
           const working = JSON.parse(localStorage.getItem(activeStorageKey()));
-          if (Array.isArray(working?.settings?.planes)) restoreSnapshot(working);
+          if (Array.isArray(working?.settings?.planes)) {
+            restoreSnapshot(working);
+            restored = true;
+          }
         } catch {
           // A missing or unreadable working sheet starts with the current preferences.
         }
       }
-      for (const [key, [, portion]] of Object.entries(DRAWING_COMPONENTS))
-        if (!Number.isInteger(settings.pens.components[key]))
-          settings.pens.components[key] = Math.round((settings.pens.widths.length - 1) * portion);
     }
-    clampPlanes();
+    const defaultPens = Object.fromEntries(Object.entries(DRAWING_COMPONENTS).map(([key, [, portion]]) =>
+      [key, Math.round((settings.pens.widths.length - 1) * portion)]));
+    settings.pens.components = { ...defaultPens, ...settings.pens.components };
+    if (fresh && !restored) clampPlanes();
     fillFloors();
     stopPlacing();
     syncSettings();

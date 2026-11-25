@@ -5,7 +5,7 @@ const fs = require('fs');
 const assert = require('assert');
 const { pathToFileURL } = require('url');
 const { chromium } = require('playwright-core');
-const { makeFixture } = require('./fixture');
+const { makeFixture, makeRhinoRevision } = require('./fixture');
 const { version } = require('../package.json');
 
 (async () => {
@@ -480,7 +480,7 @@ const { version } = require('../package.json');
   await choose('#drawingScale', 'auto');
 
   if (process.env.APP_URL) {
-    const { bytes } = await makeFixture();
+    const { r, bytes } = await makeFixture();
     const reader = page.waitForResponse((response) => response.url().endsWith('/vendor/rhino3dm/rhino3dm.wasm'));
     await page.setInputFiles('#fileInput', { name: 'fixture.3dm', mimeType: 'application/octet-stream', buffer: Buffer.from(bytes) });
     assert((await reader).ok(), 'the browser loaded the local Rhino WebAssembly reader');
@@ -570,6 +570,77 @@ const { version } = require('../package.json');
         return [...new Uint8Array(await modelFile.arrayBuffer())];
       }, Array.from(projectData));
       assert(Buffer.from(sourceMatches).equals(Buffer.from(bytes)), 'project carries the exact Rhino source bytes');
+
+      await reopened.click('#paperTab');
+      await reopened.fill('#drawingRevision', 'R2');
+      await reopened.selectOption('#drawingScale', '50');
+      await reopened.getByRole('checkbox', { name: 'Lines', exact: true }).uncheck();
+      await reopened.click('#penMenuToggle');
+      await reopened.selectOption('#drawingPenMode', 'component');
+      const penFor = (tab, name) => tab.locator('#drawingPenComponents').getByLabel(name, { exact: true });
+      await penFor(reopened, 'Walls').selectOption('2');
+      await reopened.click('#clipMenuToggle');
+      await reopened.click('#addDrawingPlane');
+      await reopened.selectOption('#drawingPlaneAxis', 'horizontal');
+      await reopened.fill('#drawingPlaneOffset', '2.8');
+      await reopened.locator('#drawingPlaneOffset').press('Tab');
+      await reopened.locator('#exportDrawing:enabled').waitFor();
+      const drawingBefore = await reopened.locator('#drawingSheet').innerHTML();
+      const cameraBefore = await reopened.evaluate(() => viewer.projectState());
+
+      async function replaceModel(tab, name, buffer, statusText) {
+        await tab.click('#fileMenuToggle');
+        const [picker] = await Promise.all([tab.waitForEvent('filechooser'), tab.click('#replaceRhinoModel')]);
+        await picker.setFiles({ name, mimeType: 'application/octet-stream', buffer });
+        await tab.waitForFunction((text) => document.querySelector('#importStatus').textContent.includes(text), statusText);
+      }
+      const revisionBytes = Buffer.from(makeRhinoRevision(r, bytes));
+      await replaceModel(reopened, 'revision.3dm', revisionBytes, 'Model updated from revision.3dm');
+      await reopened.locator('#exportDrawing:enabled').waitFor();
+      assert.notStrictEqual(await reopened.locator('#drawingSheet').innerHTML(), drawingBefore);
+      assert.deepStrictEqual(await reopened.evaluate(() => viewer.projectState()), cameraBefore);
+      assert.strictEqual(await reopened.inputValue('#drawingScale'), '50');
+      assert.strictEqual(await reopened.inputValue('#drawingPlaneOffset'), '2.8', 'a cut above the new geometry stays at its saved height');
+      assert.strictEqual(await reopened.getByLabel('Colour for Envelope', { exact: true }).inputValue(), '#3068a7');
+      assert.strictEqual(await reopened.getByLabel('Colour for Walls', { exact: true }).inputValue(), '#467837');
+      await reopened.click('#penMenuToggle');
+      assert.strictEqual(await penFor(reopened, 'Envelope').inputValue(), '2');
+      await reopened.click('#fileMenuToggle');
+      assert.match(await reopened.locator('#modelUnitsUsed').textContent(), /metres \(from file\)/);
+      assert.match(await reopened.locator('#projectModelSource').textContent(), /revision\.3dm/);
+      await reopened.locator('#fileMenuToggle').press('Escape');
+      await replaceModel(reopened, 'unreadable.3dm', Buffer.from('unreadable'), 'Could not replace the Rhino model');
+      assert.strictEqual(await reopened.inputValue('#drawingScale'), '50');
+      assert.strictEqual(await reopened.getByLabel('Colour for Envelope', { exact: true }).inputValue(), '#3068a7');
+      await reopened.click('#fileMenuToggle');
+      const [revisedProject] = await Promise.all([reopened.waitForEvent('download'), reopened.click('#saveProject')]);
+      const revisedData = await fs.promises.readFile(await revisedProject.path());
+      const clean = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+      try {
+        await clean.goto(appUrl);
+        await clean.setInputFiles('#fileInput', { name: revisedProject.suggestedFilename(), mimeType: 'application/octet-stream', buffer: revisedData });
+        await clean.locator('#exportDrawing:enabled').waitFor();
+        assert.strictEqual(await clean.inputValue('#drawingRevision'), 'R2');
+        assert.strictEqual(await clean.inputValue('#drawingScale'), '50');
+        await clean.click('#clipMenuToggle');
+        assert.strictEqual(await clean.inputValue('#drawingPlaneOffset'), '2.8');
+        assert.strictEqual(await clean.getByLabel('Colour for Envelope', { exact: true }).inputValue(), '#3068a7');
+        await clean.click('#fileMenuToggle');
+        await clean.selectOption('#unitSelect', 'm');
+        await clean.waitForFunction(() => document.querySelector('#importStatus').textContent.includes('Metres (override)'));
+        await clean.locator('#fileMenuToggle').press('Escape');
+        await replaceModel(clean, 'restored.3dm', Buffer.from(bytes), 'Model updated from restored.3dm');
+        assert.strictEqual(await clean.inputValue('#unitSelect'), 'auto');
+        assert.strictEqual(await clean.inputValue('#drawingPlaneOffset'), '2.8');
+        assert.strictEqual(await clean.getByRole('checkbox', { name: 'Lines', exact: true }).isChecked(), false,
+          'a returning layer recovers its visibility');
+        await clean.locator('#savedViews').getByRole('button', { name: /^Blue walls/ }).click();
+        await clean.click('#recallView');
+        assert.strictEqual(await clean.locator('#drawingPaper option:checked').textContent(), 'Desk proof · 250 × 400 mm');
+        assert.strictEqual(await clean.getByLabel('Colour for Walls', { exact: true }).inputValue(), '#3068a7');
+      } finally {
+        await clean.close();
+      }
     } finally {
       await context.close();
     }

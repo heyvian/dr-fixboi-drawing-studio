@@ -1,3 +1,5 @@
+// A .fixboi file contains a magic header, a little-endian manifest length, the JSON manifest,
+// and the optional source model bytes. Keep new manifest fields optional for older projects.
 const PROJECT_FILE_TYPE = 'application/octet-stream';
 const PROJECT_MAGIC = 'FIXBOI1\n';
 const PROJECT_HEADER_SIZE = PROJECT_MAGIC.length + 4;

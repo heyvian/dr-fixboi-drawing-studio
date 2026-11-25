@@ -1,3 +1,4 @@
+// Keep the inspector's selected panel and its keyboard tab stop in sync in both workspaces.
 function selectInspectorTab(tab, focus = false) {
   for (const item of tab.parentElement.querySelectorAll('[role="tab"]')) {
     const selected = item === tab;

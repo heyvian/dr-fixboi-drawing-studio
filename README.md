@@ -20,6 +20,8 @@ Choose **Expand sheet** to inspect the current sheet in a full-window viewer. Zo
 
 **File → Save project…** downloads a `.fixboi` file with the source model, current sheet, saved views, referenced custom paper sizes, camera, model units, and export options. **File → Open project…** opens that saved copy, including in another browser. You can also drop a project onto the studio. Projects made with the sample use the built-in building. Each save downloads a new copy.
 
+To update a Rhino-backed project, open it and choose **File → Replace Rhino model…**. Pick the revised `.3dm`, then use **Save project…** to download a copy with the new source embedded. The working sheet, saved views, cameras, cuts, and matching layers’ visibility, colours, and pen assignments carry forward. Layers match by Rhino ID first and full layer path second. The revision opens with **From file** units. Keep revisions in the same Rhino coordinate system so existing cuts stay aligned. Auto fit recalculates for the revised geometry.
+
 On phones, open models or projects, switch projections, and browse saved sheet views. Use a larger screen with a mouse and keyboard for drawing setup and export. The inspector tabs support arrow keys, Home and End. **Skip to viewport** appears at the start of the keyboard tab order after loading a model.
 
 Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
@@ -70,6 +72,11 @@ src/js/     util, drawing-core, drawing-render, model-import, navigate, drawing-
 tests/      importer (node) and smoke (Edge via playwright-core) tests
 tools/      Illustrator script to turn exported SVG into layers
 ```
+
+- `app.js` handles the File menu and imports a revision before swapping it into the open project.
+- `model-import.js` converts Rhino geometry to metres relative to the project datum and tracks a stable key for each layer.
+- `drawing-ui.js` stores sheet and saved-view settings, including the styles of absent layers so they can be recovered if those layers return.
+- `project-file.js` packs the project settings and original source bytes into a portable `.fixboi` file.
 
 ## Tests
 

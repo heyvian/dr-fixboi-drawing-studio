@@ -39,6 +39,7 @@
           <div class="file-menu-panel">
             <button type="button" class="primary" id="openFile">Open model…</button>
             <button type="button" id="openProject">Open project…</button>
+            <button type="button" id="replaceRhinoModel" disabled>Replace Rhino model…</button>
             <button type="button" id="saveProject" class="desktop-edit" disabled>Save project…</button>
             <button type="button" id="loadSample">Load sample</button>
             <label class="drawing-view-field">
@@ -53,12 +54,14 @@
               </select>
             </label>
             <p id="modelUnitsUsed" class="hint" hidden></p>
+            <p id="projectModelSource" class="hint" hidden></p>
             <button type="button" id="openCredits">Credits</button>
             <p class="file-menu-coffee">Found this useful? Buy me a coffee.</p>
           </div>
         </details>
         <span id="fileName" class="file-name" hidden></span>
         <input id="fileInput" type="file" accept=".3dm,.obj,.fixboi" hidden />
+        <input id="replaceRhinoInput" type="file" accept=".3dm" hidden />
       </div>
       <div class="mode-tabs" role="group" aria-label="Mode">
         <button type="button" id="modeNav" aria-pressed="true" disabled>3D Model</button>
@@ -68,7 +71,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.5.1</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.6.0</span></p>
         </div>
       </div>
     </header>

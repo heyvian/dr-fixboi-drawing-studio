@@ -1,3 +1,5 @@
+// Projects and frames model geometry on paper. Sheet coordinates are in drawing pixels until
+// export converts them to points. Clip offsets and camera positions stay in world metres.
 function drawingViewport(paper, region) {
   const pixelsPerMillimetre = DRAWING_PIXELS_PER_INCH / 25.4,
     width = region?.width ?? Math.round(paper.width * DRAWING_PIXELS_PER_INCH),

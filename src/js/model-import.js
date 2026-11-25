@@ -118,17 +118,17 @@ class ModelBuilder {
     this.triangleCount = 0;
   }
 
-  // Find or create a layer by path. 'visible' is only used when the layer is first created.
-  layer(key, color = [0.55, 0.6, 0.57], visible = true, plotWeight) {
+  // The key identifies a project layer. The current source path supplies its display name.
+  layer(key, color = [0.55, 0.6, 0.57], visible = true, plotWeight, path = key) {
     if (!this.layerIndex.has(key)) {
       this.layerIndex.set(key, this.layers.length);
       this.layers.push({
         key,
-        label: key.replace(/::/g, ' \u203a '),
+        label: path.replace(/::/g, ' \u203a '),
         color,
         visible,
         plotWeight,
-        glass: GLASS_LAYER.test(key),
+        glass: GLASS_LAYER.test(path),
         triangles: 0,
         segments: 0
       });
@@ -175,7 +175,7 @@ class ModelBuilder {
   }
 
   // Convert to the drawing coordinate system and return the model the workspace consumes.
-  finish(units) {
+  finish(units, origin) {
     let min = [Infinity, Infinity, Infinity],
       max = [-Infinity, -Infinity, -Infinity];
     for (const object of this.objects)
@@ -186,8 +186,9 @@ class ModelBuilder {
             max[k] = Math.max(max[k], list[i + k]);
           }
     if (!Number.isFinite(min[0])) throw Error('The file contains no visible geometry that can be drawn.');
-    const centre = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, min[2]];
-    const toDrawing = (list, i) => [-(list[i] - centre[0]), list[i + 2] - centre[2], list[i + 1] - centre[1]];
+    // Revisions keep the first model's datum even when the new bounds move or grow.
+    const datum = origin ?? [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, min[2]];
+    const toDrawing = (list, i) => [-(list[i] - datum[0]), list[i + 2] - datum[2], list[i + 1] - datum[1]];
     let reach = 0;
     for (const object of this.objects)
       for (const list of [object.tris, object.segs])
@@ -200,6 +201,8 @@ class ModelBuilder {
       name: this.name,
       reach: Math.max(reach, 1),
       height: max[2] - min[2],
+      datum,
+      elevations: [min[2] - datum[2], max[2] - datum[2]],
       units,
       layers: this.layers.filter((layer) => layer.triangles || layer.segments),
       warnings: this.warnings,
@@ -247,7 +250,7 @@ class ModelBuilder {
 // Register the model's layers as pen components and return it ready for the workspace.
 function registerComponents(model) {
   for (const key of Object.keys(DRAWING_COMPONENTS)) delete DRAWING_COMPONENTS[key];
-  for (const layer of model.layers) DRAWING_COMPONENTS[layer.key] = [layer.label, defaultPenPortion(layer.key)];
+  for (const layer of model.layers) DRAWING_COMPONENTS[layer.key] = [layer.label, defaultPenPortion(layer.label)];
   return model;
 }
 
@@ -268,13 +271,48 @@ const applyMatrix = (m, p) => [
   m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2] + m[2][3]
 ];
 
-// Read a Rhino document. 'r' is the rhino3dm module, so this also runs under node for the tests.
-// 'unitChoice' is 'auto' or a key of UNIT_CHOICES. 'progress(done, total)' is optional.
-async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () => {}) {
+function assignRhinoLayerKeys(layers, previous = []) {
+  // Keys belong to the Drawing Studio project. Claim matching Rhino IDs before paths so a
+  // renamed layer keeps its settings even if another layer takes its old name.
+  const registry = new Map();
+  if (Array.isArray(previous)) for (const entry of previous) {
+    if (typeof entry?.key === 'string' && entry.key && typeof entry.path === 'string' && typeof entry.id === 'string')
+      registry.set(entry.key, entry);
+  }
+  const byId = new Map([...registry.values()].filter(({ id }) => id && id !== '00000000-0000-0000-0000-000000000000')
+    .map(({ id, key }) => [id, key]));
+  const byPath = new Map([...registry.values()].map(({ path, key }) => [path, key]));
+  const claimed = new Set();
+  function claim(layer, key) {
+    layer.key = key;
+    claimed.add(key);
+    registry.set(key, { id: layer.id, path: layer.path, key });
+  }
+  for (const layer of layers) {
+    const key = byId.get(layer.id);
+    if (key && !claimed.has(key)) claim(layer, key);
+  }
+  for (const layer of layers) {
+    if (layer.key) continue;
+    const match = byPath.get(layer.path);
+    if (match && !claimed.has(match)) claim(layer, match);
+    else {
+      let key = layer.path;
+      for (let suffix = 2; registry.has(key); suffix++) key = `${layer.path} (${suffix})`;
+      claim(layer, key);
+    }
+  }
+  // Keep entries for absent layers so a later revision can recover their saved styles.
+  return [...registry.values()];
+}
+
+// Read a Rhino document with the supplied rhino3dm module so this can also run in Node.
+// A project reference shares its datum and layer keys with the incoming file.
+async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () => {}, { reference, reinterpret = false } = {}) {
   const doc = r.File3dm.fromByteArray(bytes);
   if (!doc) throw Error('This does not look like a Rhino .3dm file.');
   const builder = new ModelBuilder(name);
-  let units;
+  let units, layerRegistry;
   try {
     const settings = doc.settings();
     const code = settings.modelUnitSystem?.value;
@@ -298,8 +336,8 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       if (!layer) continue;
       layers.push({
         index: layer.index,
-        path: layer.fullPath || layer.name,
-        id: layer.id,
+        path: layer.fullPath || layer.name || 'Default',
+        id: layer.id || '',
         parent: layer.parentLayerId,
         color: to255(layer.color),
         visible: layer.visible,
@@ -307,6 +345,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       });
       dispose(layer);
     }
+    layerRegistry = assignRhinoLayerKeys(layers, reference?.layers);
     const byId = new Map(layers.map((layer) => [layer.id, layer]));
     const byIndex = new Map(layers.map((layer) => [layer.index, layer]));
     const layerVisible = (layer) => {
@@ -348,14 +387,14 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       if (!geometry || !attributes.visible) return;
       const layer = byIndex.get(attributes.layerIndex);
       if (layer && !layerVisible(layer)) return;
-      const key = layer?.path || 'Default';
-      const layerIdx = builder.layer(key, layer?.color, true, layer?.plotWeight ?? 0);
+      const key = layer?.key || 'Default';
+      const layerIdx = builder.layer(key, layer?.color, true, layer?.plotWeight ?? 0, layer?.path ?? key);
       const appearance = objectAppearance(attributes, layerIdx, parentAppearance);
       if (geometry.constructor.name === 'InstanceReference') {
         expandBlock(geometry, matrix, depth, appearance);
         return;
       }
-      const record = builder.object(layerIdx, attributes.name || key, appearance.color);
+      const record = builder.object(layerIdx, attributes.name || layer?.path || key, appearance.color);
       record.colorLayer = appearance.colorLayer;
       addGeometry(record, geometry, matrix);
     }
@@ -502,7 +541,20 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
   } finally {
     dispose(doc);
   }
-  return registerComponents(builder.finish(units));
+  const datum = reference?.datum;
+  // Reinterpreting units changes the size of the same coordinates. Replacing a file uses the
+  // incoming file's physical units against the project's existing datum in metres.
+  const ratio = reinterpret && Number.isFinite(reference?.metresPerUnit) && reference.metresPerUnit > 0
+    ? units.metresPerUnit / reference.metresPerUnit : 1;
+  const origin = Array.isArray(datum) && datum.length === 3 && datum.every(Number.isFinite)
+    ? datum.map((coordinate) => coordinate * ratio) : undefined;
+  const model = builder.finish(units, origin);
+  // Saved cameras are in the project frame. A new Rhino unit declaration does not rescale that
+  // frame unless the user deliberately reinterprets the existing model's units.
+  const frameScale = Number.isFinite(reference?.frameScale) && reference.frameScale > 0
+    ? reference.frameScale * ratio : units.metresPerUnit;
+  model.sourceReference = { datum: model.datum, metresPerUnit: units.metresPerUnit, frameScale, layers: layerRegistry };
+  return registerComponents(model);
 }
 
 // --- Wavefront (.obj) -------------------------------------------------------------------------

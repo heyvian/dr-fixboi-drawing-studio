@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
-const { makeFixture } = require('./fixture');
+const { makeFixture, makeRhinoRevision } = require('./fixture');
 
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', 'js', f), 'utf8');
 const sandbox = { console, setTimeout, URL, Blob };
@@ -71,6 +71,25 @@ const { importRhino, importObj, sampleModel, DRAWING_COMPONENTS } = sandbox.api;
   assert.strictEqual(metres.height, 3000, 'override reinterprets the model coordinates');
   assert.strictEqual(metres.units.fileLabel, 'Millimetres');
   assert.strictEqual(metres.units.source, 'override');
+
+  const revision = makeRhinoRevision(r, bytes);
+  const current = await importRhino(r, revision, 'revision', 'auto', undefined, { reference: model.sourceReference });
+  assert.strictEqual(current.units.fileLabel, 'Metres');
+  assert.deepStrictEqual(current.datum, model.datum, 'changed extents keep the original project datum');
+  assert.deepStrictEqual(Array.from(current.elevations), [-1, 1.5]);
+  assert.strictEqual(current.sourceReference.frameScale, 0.001, 'Rhino file units do not change the saved camera frame');
+  assert.strictEqual(current.layers.find((layer) => layer.label === 'Envelope').key, 'Walls');
+  assert.notStrictEqual(current.layers.find((layer) => layer.label === 'Walls').key, 'Walls');
+  assert(current.sourceReference.layers.some((layer) => layer.key === 'Lines'), 'absent layer keys are retained');
+  const currentMesh = current.assemble();
+  assert.deepStrictEqual(Array.from(currentMesh.solid.slice(0, 3)), Array.from(mesh.solid.slice(0, 3)),
+    'an unchanged Rhino point has the same drawing coordinates after replacement');
+  const reloaded = await importRhino(r, revision, 'revision', 'auto', undefined, { reference: current.sourceReference });
+  assert.deepStrictEqual(reloaded.sourceReference, current.sourceReference);
+  const reinterpreted = await importRhino(r, revision, 'revision', 'cm', undefined,
+    { reference: current.sourceReference, reinterpret: true });
+  assert.strictEqual(reinterpreted.sourceReference.frameScale, 0.00001);
+  assert.deepStrictEqual(Array.from(reinterpreted.datum), Array.from(current.datum, (coordinate) => coordinate * 0.01));
 
   for (const [system, label, expectedHeight, source] of [
     ['Inches', 'Inches', 0.0254, 'file'],

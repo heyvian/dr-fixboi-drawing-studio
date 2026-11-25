@@ -1,7 +1,7 @@
-// Drawing components are the imported layers. importModel() fills this table with
+// Drawing components are the imported layers. registerComponents() fills this table with
 // layerKey -> [label, pen portion]. The portion (0 = heaviest pen, 1 = lightest) chooses a default
 // pen in "by component" mode.
-const DRAWING_COMPONENTS = {};
+const DRAWING_COMPONENTS = Object.create(null);
 
 // Each group's layer field already holds the layer key, so a component is simply the layer.
 function drawingComponent(layer) {
@@ -414,6 +414,12 @@ function drawingPens(saved = {}) {
     Array.isArray(saved?.widths) && saved.widths.length >= 1 && saved.widths.length <= 5
       ? saved.widths.length
       : 3;
+  // A layer may be missing in a model revision and return in a later one.
+  const components = new Map();
+  for (const [key, pen] of Object.entries(saved?.components ?? {}))
+    if (Number.isInteger(pen)) components.set(key, clamp(pen, 0, count - 1));
+  for (const [key, [, portion]] of Object.entries(DRAWING_COMPONENTS))
+    if (!components.has(key)) components.set(key, Math.round((count - 1) * portion));
   return {
     mode: ['distance', 'component', 'profile', 'rhino'].includes(saved?.mode) ? saved.mode : 'distance',
     silhouette: saved?.silhouette === true,
@@ -440,13 +446,6 @@ function drawingPens(saved = {}) {
         ? clamp(saved.widths[i], DRAWING_PEN_LIMITS.min, DRAWING_PEN_LIMITS.max)
         : width
     ),
-    components: Object.fromEntries(
-      Object.entries(DRAWING_COMPONENTS).map(([key, [, portion]]) => [
-        key,
-        Number.isInteger(saved?.components?.[key])
-          ? clamp(saved.components[key], 0, count - 1)
-          : Math.round((count - 1) * portion)
-      ])
-    )
+    components: Object.fromEntries(components)
   };
 }

@@ -2,6 +2,16 @@
 // an extrusion, curves, a hidden layer and a block instance. Shared by both test scripts.
 const rhino3dm = require('rhino3dm');
 
+function boxMesh(r, [x0, y0, z0], [x1, y1, z1]) {
+  const mesh = new r.Mesh();
+  for (const corner of [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]) mesh.vertices().add(...corner);
+  for (const face of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]])
+    mesh.faces().addQuadFace(...face);
+  mesh.normals().computeNormals();
+  return mesh;
+}
+
 async function makeFixture() {
   const r = await rhino3dm();
   const doc = new r.File3dm();
@@ -29,12 +39,7 @@ async function makeFixture() {
   const mm = (v) => v * 1000;
 
   // A 4 m x 4 m x 3 m mesh box (millimetres).
-  const mesh = new r.Mesh();
-  const corners = [[0, 0, 0], [4, 0, 0], [4, 4, 0], [0, 4, 0], [0, 0, 3], [4, 0, 3], [4, 4, 3], [0, 4, 3]];
-  for (const c of corners) mesh.vertices().add(mm(c[0]), mm(c[1]), mm(c[2]));
-  for (const f of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]])
-    mesh.faces().addQuadFace(...f);
-  mesh.normals().computeNormals();
+  const mesh = boxMesh(r, [0, 0, 0], [mm(4), mm(4), mm(3)]);
   doc.objects().add(mesh, on(0, 'Mesh box'));
 
   // A Brep box without render meshes: expected to come in as edges only.
@@ -75,4 +80,31 @@ async function makeFixture() {
   return { r, bytes: doc.toByteArray() };
 }
 
-module.exports = { makeFixture };
+// A revised, lower building with the same physical datum, different file units and a renamed layer.
+function makeRhinoRevision(r, originalBytes) {
+  const original = r.File3dm.fromByteArray(originalBytes);
+  const doc = new r.File3dm();
+  doc.settings().modelUnitSystem = r.UnitSystem.Meters;
+  const oldWalls = original.layers().get(0);
+  // Add the new layer that takes the old name first to exercise ID matching before path matching.
+  const newLayer = doc.layers().addLayer('Walls', { r: 70, g: 120, b: 55, a: 255 });
+  const envelope = new r.Layer();
+  envelope.name = 'Envelope';
+  envelope.id = oldWalls.id;
+  envelope.color = { r: 220, g: 110, b: 22, a: 255 };
+  envelope.plotWeight = 0.42;
+  const envelopeIndex = doc.layers().add(envelope);
+  const mesh = boxMesh(r, [0, 0, 0], [5, 6, 1.5]);
+  const attributes = new r.ObjectAttributes();
+  attributes.layerIndex = envelopeIndex;
+  attributes.name = 'Revised mesh';
+  doc.objects().add(mesh, attributes);
+  attributes.layerIndex = newLayer;
+  attributes.name = 'New line';
+  doc.objects().addLine([-3, 0, -1], [-1, 0, -1], attributes);
+  const bytes = doc.toByteArray();
+  for (const item of [attributes, mesh, envelope, oldWalls, doc, original]) item.delete();
+  return bytes;
+}
+
+module.exports = { makeFixture, makeRhinoRevision };
