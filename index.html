@@ -66,7 +66,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.0.0</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.1.0</span></p>
         </div>
       </div>
     </header>
@@ -123,8 +123,11 @@
           </details>
           <details class="project-group project-layers" open>
             <summary>Model layers <span id="layerCount" class="project-count" aria-hidden="true"></span></summary>
-            <div id="layerList" class="layer-list"></div>
-            <p class="hint">Visibility applies to both workspaces.</p>
+            <div class="layer-panel">
+              <div class="layer-colour-key" aria-hidden="true"><span>Layer</span><span>Original</span><span>Current</span></div>
+              <div id="layerList" class="layer-list"></div>
+            </div>
+            <p class="hint">Layer colours apply to geometry that inherits them. Visibility applies to both workspaces.</p>
           </details>
         </aside>
 

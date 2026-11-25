@@ -204,18 +204,19 @@ class ModelBuilder {
       layers: this.layers.filter((layer) => layer.triangles || layer.segments),
       warnings: this.warnings,
       triangleCount: this.triangleCount,
-      // Build the flat vertex buffers drawingGeometry() reads, honouring layer visibility.
+      // Build the flat vertex buffers drawingGeometry() reads, honouring layer visibility and colour.
       // Each vertex is 10 floats: position (3), normal (3) and colour (4). Triangles go to 'solid'
       // (or 'glass' for glazing layers) and segments to 'lines'. 'groups' records where each Rhino
       // object starts in every buffer.
       assemble(includeStudioFloor, includeLayer) {
         const mesh = { solid: [], glass: [], lines: [], groups: [] };
+        const layerColors = builder.layers.map((layer) => layer.overrideColor ? rgb(layer.overrideColor) : layer.color);
         for (const object of builder.objects) {
           const layer = builder.layers[object.layer];
           if (!layer.visible || (includeLayer && !includeLayer(layer))) continue;
           const studio = object.studioFloor !== undefined;
           if (studio && includeStudioFloor && !includeStudioFloor(object.studioFloor)) continue;
-          const colour = [...(object.color || layer.color), 1];
+          const colour = [...(object.color ?? layerColors[object.colorLayer ?? object.layer]), 1];
           const buffer = layer.glass ? mesh.glass : mesh.solid;
           mesh.groups.push({
             layer: layer.key,
@@ -324,41 +325,42 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
       stats = { unmeshed: 0, skipped: new Map(), instances: 0 };
     const skip = (kind) => stats.skipped.set(kind, (stats.skipped.get(kind) || 0) + 1);
 
-    function objectColor(attributes, layer, parentColor) {
+    function objectAppearance(attributes, colorLayer, parentAppearance) {
       switch (attributes.colorSource.value) {
         case r.ObjectColorSource.ColorFromObject.value:
-          return to255(attributes.objectColor);
+          return { color: to255(attributes.objectColor) };
         case r.ObjectColorSource.ColorFromParent.value:
-          return parentColor ?? layer?.color;
+          return parentAppearance ?? { colorLayer };
         case r.ObjectColorSource.ColorFromMaterial.value: {
           const material = materials.findFromAttributes(attributes);
           try {
-            return material ? to255(material.diffuseColor) : layer?.color;
+            return material ? { color: to255(material.diffuseColor) } : { colorLayer };
           } finally {
             dispose(material);
           }
         }
         default:
-          return layer?.color;
+          return { colorLayer };
       }
     }
 
-    function addRhinoObject(attributes, geometry, matrix, depth, parentColor) {
+    function addRhinoObject(attributes, geometry, matrix, depth, parentAppearance) {
       if (!geometry || !attributes.visible) return;
       const layer = byIndex.get(attributes.layerIndex);
       if (layer && !layerVisible(layer)) return;
       const key = layer?.path || 'Default';
-      const color = objectColor(attributes, layer, parentColor);
+      const layerIdx = builder.layer(key, layer?.color, true, layer?.plotWeight ?? 0);
+      const appearance = objectAppearance(attributes, layerIdx, parentAppearance);
       if (geometry.constructor.name === 'InstanceReference') {
-        expandBlock(geometry, matrix, depth, color);
+        expandBlock(geometry, matrix, depth, appearance);
         return;
       }
-      const layerIdx = builder.layer(key, layer?.color, true, layer?.plotWeight ?? 0);
-      const record = builder.object(layerIdx, attributes.name || key, color);
+      const record = builder.object(layerIdx, attributes.name || key, appearance.color);
+      record.colorLayer = appearance.colorLayer;
       addGeometry(record, geometry, matrix);
     }
 
-    function expandBlock(geometry, matrix, depth, color) {
+    function expandBlock(geometry, matrix, depth, appearance) {
       if (depth >= 32) return skip('Block (nested too deeply)');
       stats.instances++;
       const definition = definitions.findId(geometry.parentIdefId);
@@ -370,7 +372,7 @@ async function importRhino(r, bytes, name, unitChoice = 'auto', progress = () =>
           if (!member) continue;
           const attributes = member.attributes(), shape = member.geometry();
           try {
-            addRhinoObject(attributes, shape, next, depth + 1, color);
+            addRhinoObject(attributes, shape, next, depth + 1, appearance);
           } finally {
             dispose(shape);
             dispose(attributes);

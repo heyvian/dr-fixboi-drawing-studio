@@ -49,7 +49,7 @@ Reading uses the installed [rhino3dm.js](https://github.com/mcneel/rhino3dm) lib
 Tips: in Rhino, run `Mesh` or `Render` on Breps and save, so render meshes are stored in the file.
 
 - **Flat rendering** uses the Rhino display colours directly for the visible surface fills. Hybrid uses the same colours with a lighter shaded treatment. The importer uses layer colours, explicit object colours, material diffuse colours and parent block colours where available.
-- **Layers** become the layers list; untick one to leave it out. "Outlines follow" switches outlines between layers and objects.
+- **Model layers** shows each imported colour beside an editable current swatch. Colour changes affect geometry set to inherit its layer’s colour in the 3D preview, Hybrid and Flat sheets, and their exports. **Reset colour** returns a layer to its imported colour. Working sheets and named views remember the overrides. Untick a layer to leave it out, or use **Outlines follow** under Pens to switch between layer and object outlines.
 - **Units** start at **From file** each time you open a model. The File menu shows the units in use and can override them for the current file. Rhino imports read model-space units. OBJ files and Rhino files without recognised units default to metres.
 - **Orientation**: Rhino Z is up, and Rhino +Y is drawn as north. The model is centred and its lowest point is the ground.
 - **OBJ** files are treated as Z-up like Rhino.

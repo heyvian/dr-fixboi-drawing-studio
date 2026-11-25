@@ -68,8 +68,13 @@
   function show(model, label, identity, reinterpret = false) {
     const unitRatio = reinterpret ? model.units.metresPerUnit / current.units.metresPerUnit : 1;
     if (reinterpret) {
-      const hiddenLayers = new Set(current.layers.filter((layer) => !layer.visible).map((layer) => layer.key));
-      for (const layer of model.layers) layer.visible = !hiddenLayers.has(layer.key);
+      const previousLayers = new Map(current.layers.map((layer) => [layer.key, layer]));
+      for (const layer of model.layers) {
+        const previous = previousLayers.get(layer.key);
+        if (!previous) continue;
+        layer.visible = previous.visible;
+        layer.overrideColor = previous.overrideColor;
+      }
     }
     current = model;
     controls.inert = false;
@@ -112,26 +117,61 @@
     if (mode === 'nav') setMode('draw');
   };
 
-  // One checkbox per layer. Changing visibility rebuilds the geometry but keeps drawing settings.
+  function refreshLayerGeometry(model) {
+    openDrawingWorkspace(model, false);
+    if (viewer.ok) viewer.setModel(model, false);
+  }
+
   function buildLayerList(model) {
     $('layerCount').textContent = model.layers.length;
     layerList.replaceChildren(
       ...model.layers.map((layer) => {
-        const row = document.createElement('label'),
+        const row = document.createElement('div'),
+          visibility = document.createElement('label'),
           box = document.createElement('input'),
-          swatch = document.createElement('span');
+          swatch = document.createElement('span'),
+          color = document.createElement('input'),
+          reset = document.createElement('button');
+        const original = '#' + layer.color.map((channel) => Math.round(channel * 255).toString(16).padStart(2, '0')).join('');
+        row.className = 'layer-row';
         box.type = 'checkbox';
         box.checked = layer.visible;
         box.onchange = () => {
           layer.visible = box.checked;
-          openDrawingWorkspace(model, false);
-          if (viewer.ok) viewer.setModel(model, false);
+          refreshLayerGeometry(model);
         };
-        swatch.className = 'swatch';
-        swatch.style.background = '#' + layer.color.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
         const count = layer.triangles ? `${layer.triangles.toLocaleString()} triangles` : `${layer.segments} lines`;
-        row.append(box, swatch, layer.label);
-        row.title = `${layer.label} · ${count}`;
+        visibility.title = `${layer.label} · ${count}`;
+        visibility.append(box, layer.label);
+        swatch.className = 'swatch';
+        swatch.style.backgroundColor = original;
+        swatch.title = `Original colour · ${original}`;
+        swatch.setAttribute('role', 'img');
+        swatch.setAttribute('aria-label', `Original colour for ${layer.label}, ${original}`);
+        color.type = 'color';
+        color.setAttribute('aria-label', `Colour for ${layer.label}`);
+        reset.type = 'button';
+        reset.className = 'layer-colour-reset';
+        reset.textContent = 'Reset colour';
+        reset.setAttribute('aria-label', `Reset colour for ${layer.label}`);
+        function syncColor() {
+          color.value = layer.overrideColor || original;
+          color.title = `Current colour · ${color.value}`;
+          reset.hidden = !layer.overrideColor;
+        }
+        color.onchange = () => {
+          layer.overrideColor = color.value === original ? '' : color.value;
+          syncColor();
+          refreshLayerGeometry(model);
+        };
+        reset.onclick = () => {
+          color.focus();
+          layer.overrideColor = '';
+          syncColor();
+          refreshLayerGeometry(model);
+        };
+        syncColor();
+        row.append(visibility, swatch, color, reset);
         return row;
       })
     );

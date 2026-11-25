@@ -451,6 +451,24 @@ const { version } = require('../package.json');
     assert.match(rhinoSvg, /data-layer="Title and scale"/);
     assert.match(rhinoSvg, /<path[^>]*aria-label="fixture/);
     assert.doesNotMatch(rhinoSvg, /clip-path=|<clipPath\b|<text\b|font-family=|<image\b/);
+    const wallColour = page.getByLabel('Colour for Walls', { exact: true });
+    const originalWallColour = page.getByRole('img', { name: 'Original colour for Walls, #c83c3c' });
+    assert.strictEqual(await wallColour.inputValue(), '#c83c3c');
+    await wallColour.evaluate((el) => {
+      el.value = '#3068a7';
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    assert(await originalWallColour.isVisible());
+    const recolouredDownload = await downloadSvg();
+    assert.match(await fs.promises.readFile(await recolouredDownload.path(), 'utf8'), /fill="#3068a7"/);
+    await page.click('#newView');
+    await page.fill('#savedViewName', 'Blue walls');
+    await page.click('#saveView');
+    await page.getByRole('button', { name: 'Reset colour for Walls' }).click();
+    assert.strictEqual(await wallColour.inputValue(), '#c83c3c');
+    await page.click('#recallView');
+    assert.strictEqual(await wallColour.inputValue(), '#3068a7');
+    assert(await originalWallColour.isVisible());
     const scaleBar = await page.evaluate((source) => {
       const svg = new DOMParser().parseFromString(source, 'image/svg+xml');
       const bar = svg.querySelector('[data-scale-metres]');

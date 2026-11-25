@@ -69,6 +69,8 @@ async function makeFixture() {
   instance.colorSource = r.ObjectColorSource.ColorFromObject;
   instance.objectColor = { r: 85, g: 102, b: 119, a: 255 };
   doc.objects().add(new r.InstanceReference(definitions.findIndex(index).id, r.Transform.translationXYZ(0, mm(2), 0)), instance);
+  doc.objects().add(new r.InstanceReference(definitions.findIndex(index).id, r.Transform.translationXYZ(0, mm(3), 0)),
+    on(0, 'Layer-coloured instance'));
 
   return { r, bytes: doc.toByteArray() };
 }

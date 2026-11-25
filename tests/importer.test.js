@@ -42,19 +42,28 @@ const { importRhino, importObj, sampleModel, DRAWING_COMPONENTS } = sandbox.api;
   const mesh = model.assemble();
   assert(mesh.solid.length === 12 * 30 && mesh.lines.length > 0);
   assert.deepStrictEqual(Array.from(mesh.solid.slice(6, 9), (value) => Math.round(value * 255)), [200, 60, 60]);
-  const colorOf = (name) => {
-    const group = mesh.groups.find((group) => group.name === name);
-    return Array.from(mesh.lines.slice(group.lines + 6, group.lines + 9), (value) => Math.round(value * 255));
-  };
-  assert.deepStrictEqual(colorOf('Material colour'), [12, 34, 56]);
-  assert.deepStrictEqual(colorOf('Block member'), [85, 102, 119]);
+  const lineColours = (mesh, name) => Array.from(mesh.groups.filter((group) => group.name === name), (group) =>
+    Array.from(mesh.lines.slice(group.lines + 6, group.lines + 9), (value) => Math.round(value * 255)));
+  assert.deepStrictEqual(lineColours(mesh, 'Material colour'), [[12, 34, 56]]);
+  assert.deepStrictEqual(lineColours(mesh, 'Block member'), [[85, 102, 119], [200, 60, 60]]);
   assert.strictEqual(mesh.groups.find((group) => group.name === 'Block member').layer, 'Glazing');
   let minY = Infinity;
   for (let i = 0; i < mesh.solid.length; i += 10) minY = Math.min(minY, mesh.solid[i + 1]);
   assert.strictEqual(minY, 0, 'lowest point is on the ground datum');
 
+  const walls = model.layers.find((l) => l.key === 'Walls');
+  const lines = model.layers.find((l) => l.key === 'Lines');
+  walls.overrideColor = '#3068a7';
+  lines.overrideColor = '#e25919';
+  const recoloured = model.assemble();
+  assert.deepStrictEqual(Array.from(recoloured.solid.slice(6, 9), (value) => Math.round(value * 255)), [48, 104, 167]);
+  assert.deepStrictEqual(lineColours(recoloured, 'Block member'), [[85, 102, 119], [48, 104, 167]]);
+  assert.deepStrictEqual(lineColours(recoloured, 'Material colour'), [[12, 34, 56]]);
+  assert.deepStrictEqual(lineColours(recoloured, 'Line'), [[226, 89, 25]]);
+  assert.deepStrictEqual(Array.from(walls.color, (value) => Math.round(value * 255)), [200, 60, 60]);
+
   // Layer visibility filters the buffers.
-  model.layers.find((l) => l.key === 'Walls').visible = false;
+  walls.visible = false;
   assert.strictEqual(model.assemble().solid.length, 0);
 
   // Unit override: pretend the file is in metres.

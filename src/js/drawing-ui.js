@@ -213,7 +213,9 @@ const openDrawingWorkspace = (() => {
       base,
       metresPerUnit: sourceModel.units.metresPerUnit,
       titles: titleFields.map((field) => field.value),
-      hiddenLayers: sourceModel.layers.filter((layer) => !layer.visible).map((layer) => layer.key)
+      hiddenLayers: sourceModel.layers.filter((layer) => !layer.visible).map((layer) => layer.key),
+      layerColours: Object.fromEntries(sourceModel.layers.filter((layer) => layer.overrideColor)
+        .map((layer) => [layer.key, layer.overrideColor]))
     };
   }
   function rescaleCapturedView(ratio) {
@@ -241,7 +243,12 @@ const openDrawingWorkspace = (() => {
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
     const hidden = new Set(snapshot.hiddenLayers);
-    for (const layer of sourceModel.layers) layer.visible = !hidden.has(layer.key);
+    for (const layer of sourceModel.layers) {
+      layer.visible = !hidden.has(layer.key);
+      // A view saved before recolouring has no colour settings to restore.
+      if (snapshot.layerColours && typeof snapshot.layerColours === 'object')
+        layer.overrideColor = Object.hasOwn(snapshot.layerColours, layer.key) ? paintHex(snapshot.layerColours[layer.key]) : '';
+    }
   }
   function refreshSavedViews(selection = '') {
     viewList.replaceChildren(...savedViews.map(({ name, settings: saved }) => {

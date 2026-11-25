@@ -110,12 +110,13 @@ main > .drawing-workspace {
 .drawing-controls[inert] {
   opacity: 0.45;
 }
+.layer-panel {
+  overflow: auto;
+  margin: 6px 0;
+}
 .layer-list {
   display: grid;
   gap: 2px;
-  max-height: 220px;
-  overflow: auto;
-  margin: 6px 0;
 }
 .layer-list label {
   display: flex;
@@ -125,9 +126,8 @@ main > .drawing-workspace {
   font-size: 12px;
 }
 .layer-list .swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  border: 1px solid #0003;
-  flex: none;
+  width: 18px;
+  height: 16px;
+  border: 1px solid var(--control-border);
+  justify-self: center;
 }
