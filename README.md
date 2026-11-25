@@ -18,7 +18,9 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 
 Choose **Expand sheet** to inspect the current sheet in a full-window viewer. Zoom and scroll independently of the sheet’s print scale and placement. With the preview area focused, use **+** and **−** to zoom, **0** to fit, and **Escape** to close.
 
-On phones, open models, switch projections, and browse saved sheet views. Use a larger screen with a mouse and keyboard for drawing setup and export. The inspector tabs support arrow keys, Home and End. **Skip to viewport** appears at the start of the keyboard tab order after loading a model.
+**File → Save project…** downloads a `.fixboi` file with the source model, current sheet, saved views, referenced custom paper sizes, camera, model units, and export options. **File → Open project…** opens that saved copy, including in another browser. You can also drop a project onto the studio. Projects made with the sample use the built-in building. Each save downloads a new copy.
+
+On phones, open models or projects, switch projections, and browse saved sheet views. Use a larger screen with a mouse and keyboard for drawing setup and export. The inspector tabs support arrow keys, Home and End. **Skip to viewport** appears at the start of the keyboard tab order after loading a model.
 
 Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
 

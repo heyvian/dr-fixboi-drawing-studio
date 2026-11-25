@@ -42,6 +42,9 @@ const openDrawingWorkspace = (() => {
   const customPaperStorageKey = storageKey + '-paper-sizes';
   const customPapers = new Map();
   const validPaperSide = (inches) => Number.isFinite(inches) && inches >= 4 - 1e-8 && inches <= 48 + 1e-8;
+  const validCustomPaper = (preset) => typeof preset?.id === 'string' && /^custom-[0-9a-f-]+$/.test(preset.id) &&
+    typeof preset.name === 'string' && preset.name.trim() && validPaperSide(preset.width) && validPaperSide(preset.height) &&
+    ['in', 'mm'].includes(preset.unit);
   function registerCustomPaper(preset) {
     customPapers.set(preset.id, preset);
     paperSizes[preset.id] = [Math.min(preset.width, preset.height), Math.max(preset.width, preset.height)];
@@ -50,10 +53,7 @@ const openDrawingWorkspace = (() => {
     const storedPapers = JSON.parse(localStorage.getItem(customPaperStorageKey));
     if (Array.isArray(storedPapers)) {
       for (const preset of storedPapers) {
-        if (typeof preset?.id === 'string' && /^custom-[0-9a-f-]+$/.test(preset.id) &&
-            typeof preset.name === 'string' && preset.name.trim() &&
-            validPaperSide(preset.width) && validPaperSide(preset.height) &&
-            ['in', 'mm'].includes(preset.unit)) registerCustomPaper(preset);
+        if (validCustomPaper(preset)) registerCustomPaper(preset);
       }
     }
   } catch {
@@ -132,75 +132,69 @@ const openDrawingWorkspace = (() => {
     exportingPdf = false,
     placing = false,
     drag = null;
+  function readDrawingSettings(saved) {
+    const previousElevation = ['front', 'side'].includes(saved.view);
+    const headings = Object.fromEntries(['axo', 'plan', 'elevation'].flatMap((view) => {
+      const heading = saved.viewHeadings?.[view] ?? saved.viewHeading;
+      return Number.isFinite(heading) ? [[view, mod(heading, 360)]] : [];
+    }));
+    const planes = saved.planes.filter((plane) => plane && Number.isFinite(plane.id) && Number.isFinite(plane.offset) &&
+      Number.isFinite(plane.angle) && ['horizontal', 'vertical'].includes(plane.axis)).map(({ id, offset, angle, axis, floor, flip }) =>
+      ({ id, offset, angle: mod(angle, 360), axis, floor: Number.isInteger(floor) ? floor : null, flip: flip === true }));
+    return {
+      ...sectionPreferences(saved),
+      view: previousElevation ? 'elevation' : viewNames.includes(saved.view) ? saved.view : 'axo',
+      viewHeadings: headings,
+      orbitLocked: saved.orbitLocked === true,
+      elevation: Number.isFinite(saved.elevation) ? mod(saved.elevation, 360) : saved.view === 'side' ? 315 : 225,
+      storey: Number.isFinite(saved.storey) ? clamp(saved.storey, 1, 20) : 3.5,
+      bodies: ['layer', 'object', 'none'].includes(saved.bodies) ? saved.bodies : 'layer',
+      azimuth: Number.isInteger(saved.azimuth) && COMPASS_POINTS[saved.azimuth] ? saved.azimuth : 5,
+      paper: Object.hasOwn(paperSizes, saved.paper) ? saved.paper : 'letter',
+      orientation: saved.orientation === 'portrait' ? 'portrait' : 'landscape',
+      scale: DRAWING_SCALES.includes(Number(saved.scale)) ? String(saved.scale) : 'auto',
+      mode: ['linework', 'color', 'flat'].includes(saved.mode) ? saved.mode : 'linework',
+      placement: {
+        x: Number.isFinite(saved.placement?.x) ? saved.placement.x : 0,
+        y: Number.isFinite(saved.placement?.y) ? saved.placement.y : 0,
+        ground: saved.placement?.ground === true,
+        center: saved.placement?.center === true
+      },
+      planSheet: saved.planSheet === 'floors' ? 'floors' : 'single',
+      glazing: saved.glazing === true,
+      pens: drawingPens(saved.pens),
+      selected: Number.isFinite(saved.selected) ? saved.selected : null,
+      planes
+    };
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (saved && Array.isArray(saved.planes)) {
-      const previousElevation = ['front', 'side'].includes(saved.view);
-      settings = {
-        ...settings,
-        ...sectionPreferences(saved),
-        view: previousElevation ? 'elevation' : viewNames.includes(saved.view) ? saved.view : 'axo',
-        elevation: Number.isFinite(saved.elevation)
-          ? mod(saved.elevation, 360)
-          : saved.view === 'side'
-            ? 315
-            : 225,
-        storey: Number.isFinite(saved.storey) ? clamp(saved.storey, 1, 20) : 3.5,
-        bodies: ['layer', 'object', 'none'].includes(saved.bodies) ? saved.bodies : 'layer',
-        azimuth:
-          Number.isInteger(saved.azimuth) && COMPASS_POINTS[saved.azimuth] ? saved.azimuth : 5,
-        paper: Object.hasOwn(paperSizes, saved.paper) ? saved.paper : 'letter',
-        orientation: saved.orientation === 'portrait' ? 'portrait' : 'landscape',
-        scale: DRAWING_SCALES.includes(Number(saved.scale)) ? saved.scale : 'auto',
-        mode: ['linework', 'color', 'flat'].includes(saved.mode)
-          ? saved.mode
-          : 'linework',
-        placement: {
-          x: Number.isFinite(saved.placement?.x) ? saved.placement.x : 0,
-          y: Number.isFinite(saved.placement?.y) ? saved.placement.y : 0,
-          ground: saved.placement?.ground === true,
-          center: saved.placement?.center === true
-        },
-        glazing: saved.glazing === true,
-        pens: drawingPens(saved.pens),
-        selected: saved.selected,
-        planes: saved.planes.filter(
-          (plane) =>
-            plane &&
-            Number.isFinite(plane.id) &&
-            Number.isFinite(plane.offset) &&
-            Number.isFinite(plane.angle) &&
-            ['horizontal', 'vertical'].includes(plane.axis)
-        )
-      };
-    }
+    if (Array.isArray(saved?.planes)) settings = readDrawingSettings(saved);
   } catch {
     // Drawing controls remain available when the browser blocks local storage.
   }
 
   const exportPaper = $('exportPaper'), exportAnnotations = $('exportAnnotations'), exportPaths = $('exportPaths');
   const exportStorageKey = storageKey + '-export';
-  try {
-    const preferences = JSON.parse(localStorage.getItem(exportStorageKey));
+  const exportPreferences = () => ({ paper: exportPaper.checked, annotations: exportAnnotations.checked, paths: exportPaths.value });
+  function applyExportPreferences(preferences) {
     exportPaper.checked = preferences?.paper !== false;
     exportAnnotations.checked = preferences?.annotations !== false;
     exportPaths.value = preferences?.paths === 'individual' ? 'individual' : 'batch';
+  }
+  function saveExportPreferences() {
+    try {
+      localStorage.setItem(exportStorageKey, JSON.stringify(exportPreferences()));
+    } catch {
+      // Export still uses the current controls.
+    }
+  }
+  try {
+    applyExportPreferences(JSON.parse(localStorage.getItem(exportStorageKey)));
   } catch {
     // The defaults are already set in the controls.
   }
-  for (const control of [exportPaper, exportAnnotations, exportPaths]) {
-    control.onchange = () => {
-      try {
-        localStorage.setItem(exportStorageKey, JSON.stringify({
-          paper: exportPaper.checked,
-          annotations: exportAnnotations.checked,
-          paths: exportPaths.value
-        }));
-      } catch {
-        // Export still uses the current controls.
-      }
-    };
-  }
+  for (const control of [exportPaper, exportAnnotations, exportPaths]) control.onchange = saveExportPreferences;
 
   const viewList = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus'),
     viewDialog = $('savedViewDialog'), viewError = $('savedViewError');
@@ -219,6 +213,51 @@ const openDrawingWorkspace = (() => {
         .map((layer) => [layer.key, layer.overrideColor]))
     };
   }
+  function projectDrawingState() {
+    const working = currentSnapshot();
+    const paperIds = new Set([working, ...savedViews].map((snapshot) => snapshot.settings.paper));
+    return {
+      working,
+      views: savedViews,
+      papers: [...paperIds].map((id) => customPapers.get(id)).filter(Boolean),
+      export: exportPreferences()
+    };
+  }
+  function restoreProjectDrawings(project) {
+    const paperIds = new Map();
+    const presets = Array.isArray(project.papers) ? project.papers.filter(validCustomPaper) : [];
+    for (const { id, name, width, height, unit } of presets) {
+      const existing = customPapers.get(id);
+      const match = [...customPapers.values()].find((preset) =>
+        preset.name === name && preset.width === width && preset.height === height && preset.unit === unit);
+      const localId = match?.id ?? (existing ? `custom-${projectIdentifier()}` : id);
+      paperIds.set(id, localId);
+      if (!match) registerCustomPaper({ id: localId, name, width, height, unit });
+    }
+    syncCustomPaperChoices();
+    const mapPaper = (snapshot) => ({ ...snapshot,
+      settings: { ...snapshot.settings, paper: paperIds.get(snapshot.settings.paper) ?? snapshot.settings.paper } });
+    const names = new Set();
+    savedViews = [];
+    for (const snapshot of project.views) {
+      const name = typeof snapshot?.name === 'string' ? snapshot.name.trim().slice(0, 80) : '';
+      if (!name || names.has(name.toLowerCase()) || !Array.isArray(snapshot.settings?.planes)) continue;
+      names.add(name.toLowerCase());
+      savedViews.push({ ...mapPaper(snapshot), name });
+    }
+    refreshSavedViews();
+    restoreSnapshot(mapPaper(project.working));
+    if (project.export) {
+      applyExportPreferences(project.export);
+      saveExportPreferences();
+    }
+    try {
+      localStorage.setItem(customPaperStorageKey, JSON.stringify([...customPapers.values()]));
+      localStorage.setItem(viewsStorageKey(), JSON.stringify(savedViews));
+    } catch {
+      // The project file remains available when this browser cannot persist a working copy.
+    }
+  }
   function rescaleCapturedView(ratio) {
     if (!base || ratio === 1) return;
     base.target = base.target.map((coordinate) => coordinate * ratio);
@@ -226,24 +265,15 @@ const openDrawingWorkspace = (() => {
     base.halfHeight *= ratio;
   }
   function restoreSnapshot(snapshot) {
-    base = structuredClone(snapshot.base);
+    const camera = snapshot.base;
+    base = validSavedCamera(camera) ? structuredClone(camera) : null;
     if (Number.isFinite(snapshot.metresPerUnit) && snapshot.metresPerUnit > 0)
       rescaleCapturedView(sourceModel.units.metresPerUnit / snapshot.metresPerUnit);
-    // Sheets saved before the projection toolbar used independent compass directions.
-    const { viewHeading, viewHeadings, ...stored } = structuredClone(snapshot.settings);
-    settings = {
-      orbitLocked: false,
-      ...stored,
-      ...sectionPreferences(stored),
-      viewHeadings: viewHeadings ?? (Number.isFinite(viewHeading)
-        ? { axo: viewHeading, plan: viewHeading, elevation: viewHeading } : {}),
-      pens: drawingPens(snapshot.settings.pens)
-    };
-    if (!Object.hasOwn(paperSizes, settings.paper)) settings.paper = 'letter';
-    titleFields.forEach((field, i) => { field.value = snapshot.titles?.[i] ?? ''; });
+    settings = readDrawingSettings(snapshot.settings);
+    titleFields.forEach((field, i) => { field.value = typeof snapshot.titles?.[i] === 'string' ? snapshot.titles[i] : ''; });
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
-    const hidden = new Set(snapshot.hiddenLayers);
+    const hidden = new Set(Array.isArray(snapshot.hiddenLayers) ? snapshot.hiddenLayers : []);
     for (const layer of sourceModel.layers) {
       layer.visible = !hidden.has(layer.key);
       // A view saved before recolouring has no colour settings to restore.
@@ -2054,7 +2084,7 @@ const openDrawingWorkspace = (() => {
   }
 
   // Called by the app with each imported (or re-filtered) model. 'fresh' marks a different file.
-  function load(model, fresh = true, identity) {
+  function load(model, fresh = true, identity, project = null) {
     if (!fresh && sourceModel)
       rescaleCapturedView(model.units.metresPerUnit / sourceModel.units.metresPerUnit);
     sourceModel = model;
@@ -2079,11 +2109,14 @@ const openDrawingWorkspace = (() => {
       settings.planSheet = 'single';
       settings.viewHeadings = {};
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
-      try {
-        const working = JSON.parse(localStorage.getItem(activeStorageKey()));
-        if (Array.isArray(working?.settings?.planes)) restoreSnapshot(working);
-      } catch {
-        // A missing or unreadable working sheet starts with the current preferences.
+      if (project) restoreProjectDrawings(project);
+      else {
+        try {
+          const working = JSON.parse(localStorage.getItem(activeStorageKey()));
+          if (Array.isArray(working?.settings?.planes)) restoreSnapshot(working);
+        } catch {
+          // A missing or unreadable working sheet starts with the current preferences.
+        }
       }
       for (const [key, [, portion]] of Object.entries(DRAWING_COMPONENTS))
         if (!Number.isInteger(settings.pens.components[key]))
@@ -2114,5 +2147,6 @@ const openDrawingWorkspace = (() => {
 
   load.setBase = setBase;
   load.refresh = queueDrawing;
+  load.projectState = projectDrawingState;
   return load;
 })();

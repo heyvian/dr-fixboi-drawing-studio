@@ -38,6 +38,8 @@
           <summary id="fileMenuToggle">File</summary>
           <div class="file-menu-panel">
             <button type="button" class="primary" id="openFile">Open model…</button>
+            <button type="button" id="openProject">Open project…</button>
+            <button type="button" id="saveProject" class="desktop-edit" disabled>Save project…</button>
             <button type="button" id="loadSample">Load sample</button>
             <label class="drawing-view-field">
               <span>Model units</span>
@@ -56,7 +58,7 @@
           </div>
         </details>
         <span id="fileName" class="file-name" hidden></span>
-        <input id="fileInput" type="file" accept=".3dm,.obj" hidden />
+        <input id="fileInput" type="file" accept=".3dm,.obj,.fixboi" hidden />
       </div>
       <div class="mode-tabs" role="group" aria-label="Mode">
         <button type="button" id="modeNav" aria-pressed="true" disabled>3D Model</button>
@@ -66,7 +68,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.2.0</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.3.0</span></p>
         </div>
       </div>
     </header>
@@ -86,10 +88,10 @@
             <h2><span><span class="headline-phrase">Dr. FixBoi</span> <span class="headline-phrase">plots the lines.</span></span><em>You bring the aura<span>.</span></em></h2>
             <p class="landing-description">Dr. FixBoi gets the plans, sections, elevations and axonometrics out of your model and into Illustrator. I'll output the linework so you can add your special touch. Make those drawings have some <em>rizz</em> as they say.</p>
             <div class="actions">
-              <button type="button" class="primary" id="openFileZone">Open Rhino or OBJ</button>
+              <button type="button" class="primary" id="openFileZone">Open model or project</button>
               <button type="button" id="loadSampleZone">Load sample</button>
             </div>
-            <p class="landing-note">Drop a .3dm or .obj file anywhere on the plate. Files are processed in your browser.</p>
+            <p class="landing-note">Drop a .3dm, .obj, or .fixboi project anywhere on the plate. Files are processed in your browser.</p>
             <p class="mobile-view-note">For drawing and exporting, use a larger screen with a mouse and keyboard.</p>
           </div>
           <figure class="sample-fragment">
@@ -607,6 +609,7 @@
     <!-- Classic scripts, in dependency order. They share globals so the app runs from file://. -->
     <script src="src/js/util.js"></script>
     <script src="src/js/contrast.js"></script>
+    <script src="src/js/project-file.js"></script>
     <script src="src/js/drawing-core.js"></script>
     <script src="src/js/drawing-render.js"></script>
     <script src="src/js/model-import.js"></script>

@@ -548,6 +548,23 @@ const viewer = (() => {
     },
     pointAt,
     setFocusAt,
+    projectState: () => ({ camera: { ...camera, halfWidth: camera.halfHeight * aspect() }, focus,
+      lastAxo, lastPlan, lastElevation, activeAxo, lines: lineOptions }),
+    restoreProject(state) {
+      if (!validSavedCamera(state?.camera)) return;
+      const { target, halfHeight, az, el } = state.camera;
+      Object.assign(camera, { target: [...target], halfHeight, az, el: clamp(el, -TOP, TOP) });
+      if (validSavedPoint(state.focus)) focus = [...state.focus];
+      if (Number.isInteger(state.lastAxo) && COMPASS_POINTS[state.lastAxo]) lastAxo = state.lastAxo;
+      if (Number.isFinite(state.lastPlan)) lastPlan = mod(state.lastPlan, 360);
+      if (Number.isFinite(state.lastElevation)) lastElevation = mod(state.lastElevation, 360);
+      activeAxo = Number.isInteger(state.activeAxo) && COMPASS_POINTS[state.activeAxo] ? state.activeAxo : null;
+      const lines = Object.fromEntries(Object.entries(lineOptions).map(([key, value]) => [key,
+        typeof value === 'boolean' && typeof state.lines?.[key] === 'boolean' ? state.lines[key] : value]));
+      if (Number.isFinite(state.lines?.creaseAngle)) lines.creaseAngle = clamp(state.lines.creaseAngle, 5, 90);
+      setLines(lines);
+      onMove?.();
+    },
     // What the drawing needs: the viewing angles, the point at the window centre and the half-extents
     // of the window in model units.
     snapshot: () => ({

@@ -479,6 +479,8 @@ const { version } = require('../package.json');
     assert(await originalWallColour.isVisible());
     const recolouredDownload = await downloadSvg();
     assert.match(await fs.promises.readFile(await recolouredDownload.path(), 'utf8'), /fill="#3068a7"/);
+    const customPaper = await page.locator('#customPaperChoices option').getAttribute('value');
+    await choose('#drawingPaper', customPaper);
     await page.click('#newView');
     await page.fill('#savedViewName', 'Blue walls');
     await page.click('#saveView');
@@ -516,6 +518,32 @@ const { version } = require('../package.json');
     assert.match(pdf, /^%PDF-/);
     assert.strictEqual(pdf.match(/\/MediaBox \[[^\]]+\]/)?.[0], '/MediaBox [0 0 1224. 792.]');
     assert.doesNotMatch(pdf, /\/Subtype \/Image\b/);
+
+    await page.click('#fileMenuToggle');
+    const [projectDownload] = await Promise.all([page.waitForEvent('download'), page.click('#saveProject')]);
+    assert.match(projectDownload.suggestedFilename(), /\.fixboi$/);
+    const projectData = await fs.promises.readFile(await projectDownload.path());
+    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    try {
+      const reopened = await context.newPage();
+      await reopened.goto(appUrl);
+      await reopened.setInputFiles('#fileInput', { name: projectDownload.suggestedFilename(), mimeType: 'application/octet-stream', buffer: projectData });
+      await reopened.locator('#exportDrawing:enabled').waitFor();
+      assert.strictEqual(await reopened.inputValue('#drawingPaper'), 'tabloid');
+      assert.strictEqual(await reopened.inputValue('#unitSelect'), 'auto');
+      assert.strictEqual(await reopened.getByLabel('Colour for Walls', { exact: true }).inputValue(), '#3068a7');
+      await reopened.locator('#savedViews').getByRole('button', { name: /^Blue walls/ }).click();
+      await reopened.click('#recallView');
+      assert.strictEqual(await reopened.locator('#drawingPaper option:checked').textContent(), 'Desk proof · 250 × 400 mm');
+      const sourceMatches = await reopened.evaluate(async (projectBytes) => {
+        const file = new File([Uint8Array.from(projectBytes)], 'fixture.fixboi');
+        const { modelFile } = await readDrawingProject(file);
+        return [...new Uint8Array(await modelFile.arrayBuffer())];
+      }, Array.from(projectData));
+      assert(Buffer.from(sourceMatches).equals(Buffer.from(bytes)), 'project carries the exact Rhino source bytes');
+    } finally {
+      await context.close();
+    }
   }
 
   await page.reload();

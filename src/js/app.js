@@ -11,9 +11,12 @@
     workspace = $('drawingsPhase'),
     fileName = $('fileName'),
     layerList = $('layerList'),
-    unitSelect = $('unitSelect');
+    unitSelect = $('unitSelect'),
+    saveProject = $('saveProject');
   let current = null, // the model currently drawn
     lastFile = null, // remembered so changing the unit setting can re-read it
+    projectId = null,
+    projectName = '',
     busy = false,
     mode = 'draw'; // 'nav' (3D navigation) or 'draw' (the drawing sheet)
 
@@ -47,9 +50,10 @@
     busy = value;
     workspace.setAttribute('aria-busy', String(value));
     workspace.inert = value;
-    for (const control of [$('openFile'), $('openFileZone'), $('loadSample'), $('loadSampleZone')])
+    for (const control of [$('openFile'), $('openFileZone'), $('openProject'), $('loadSample'), $('loadSampleZone')])
       control.disabled = value;
     unitSelect.disabled = value || !lastFile;
+    saveProject.disabled = value || !current;
   }
   function loadingModel(message, done, total) {
     say(message, 'loading');
@@ -65,7 +69,7 @@
   const yieldForImport = () => new Promise((resolve) => setTimeout(resolve, 20));
 
   // Hand a finished model to the workspace and rebuild the layer list.
-  function show(model, label, identity, reinterpret = false) {
+  function show(model, label, identity, reinterpret = false, project = null) {
     const unitRatio = reinterpret ? model.units.metresPerUnit / current.units.metresPerUnit : 1;
     if (reinterpret) {
       const previousLayers = new Map(current.layers.map((layer) => [layer.key, layer]));
@@ -83,7 +87,7 @@
     fileName.hidden = false;
     fileName.textContent = label;
     fileName.title = label;
-    openDrawingWorkspace(model, !reinterpret, identity);
+    openDrawingWorkspace(model, !reinterpret, identity, project?.drawings);
     buildLayerList(model);
     if (reinterpret) {
       if (viewer.ok) viewer.setModel(model, false, unitRatio);
@@ -92,6 +96,14 @@
       setMode('nav');
       viewer.setModel(model, true);
       if (Number.isInteger(model.initialAxonometric)) viewer.axo(model.initialAxonometric);
+      if (project?.navigation) {
+        viewer.restoreProject(project.navigation);
+        const lines = viewer.lines;
+        for (const box of document.querySelectorAll('#navLines [data-line]')) box.checked = lines[box.dataset.line];
+        $('navCreaseAngle').value = lines.creaseAngle;
+        $('navCreaseOut').textContent = `${lines.creaseAngle}°`;
+      }
+      if (project?.mode === 'draw') setMode('draw');
     } else setMode('draw');
     const { units } = model;
     unitSelect.value = units.choice;
@@ -177,33 +189,52 @@
     );
   }
 
-  // Read a user-chosen .3dm or .obj file.
+  // Read a user-chosen model or a model embedded in a project.
+  async function readModel(file, unitChoice) {
+    if (!file) {
+      loadingModel('Building the sample model…');
+      await yieldForImport();
+      return sampleModel();
+    }
+    const base = file.name.replace(PROJECT_MODEL_EXTENSION, '');
+    if (/\.obj$/i.test(file.name)) {
+      loadingModel('Reading ' + file.name + '…');
+      const contents = await file.text();
+      loadingModel('Building geometry…');
+      await yieldForImport();
+      return importObj(contents, base, unitChoice);
+    }
+    if (!/\.3dm$/i.test(file.name)) throw Error('Choose a Rhino .3dm, OBJ, or Drawing Studio .fixboi project.');
+    loadingModel('Loading the Rhino reader…');
+    const rhino = await timed(loadRhino(), 45000);
+    loadingModel('Reading ' + file.name + '…');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return importRhino(rhino, bytes, base, unitChoice, (done, total) =>
+      loadingModel(`Building geometry… ${done} of ${total} objects`, done, total));
+  }
+
   async function openFile(file, { unitChoice = 'auto', reinterpret = false } = {}) {
     if (busy || !file) return;
     setImportBusy(true);
     unitSelect.value = unitChoice;
-    const base = file.name.replace(/\.[^.]+$/, '');
     try {
-      let model;
-      if (/\.obj$/i.test(file.name)) {
-        loadingModel('Reading ' + file.name + '…');
-        const contents = await file.text();
-        loadingModel('Building geometry…');
-        await yieldForImport();
-        model = importObj(contents, base, unitChoice);
-      } else if (/\.3dm$/i.test(file.name)) {
-        loadingModel('Loading the Rhino reader…');
-        const rhino = await timed(loadRhino(), 45000);
-        loadingModel('Reading ' + file.name + '…');
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        model = await importRhino(rhino, bytes, base, unitChoice, (done, total) =>
-          loadingModel(`Building geometry… ${done} of ${total} objects`, done, total)
-        );
-      } else throw Error('Choose a Rhino .3dm file or an .obj file.');
+      let project = null;
+      if (PROJECT_EXTENSION.test(file.name)) {
+        loadingModel('Reading project…');
+        project = await readDrawingProject(file);
+      }
+      const modelFile = project ? project.modelFile : file;
+      const model = await readModel(modelFile, project?.units ?? unitChoice);
       loadingModel('Preparing the model view…');
       await yieldForImport();
-      show(model, file.name, JSON.stringify([file.name, file.size, file.lastModified]), reinterpret);
-      lastFile = file;
+      const identity = project ? `project:${project.id}` : JSON.stringify([file.name, file.size, file.lastModified]);
+      const label = reinterpret && projectName ? `${projectName}.fixboi` : file.name;
+      show(model, label, identity, reinterpret, project);
+      lastFile = modelFile;
+      if (!reinterpret) {
+        projectId = project?.id ?? null;
+        projectName = project ? file.name.replace(PROJECT_EXTENSION, '') : '';
+      }
     } catch (error) {
       unitSelect.value = current?.units.choice ?? 'auto';
       console.error('Import failed', error);
@@ -223,13 +254,13 @@
     if (busy) return;
     setImportBusy(true);
     try {
-      loadingModel('Building the sample model…');
-      await yieldForImport();
-      const model = sampleModel();
+      const model = await readModel(null);
       loadingModel('Preparing the model view…');
       await yieldForImport();
       show(model, model.name, 'sample:valentine');
       lastFile = null;
+      projectId = null;
+      projectName = '';
     } catch (error) {
       console.error('Sample failed', error);
       say('Could not build the sample: ' + error.message, 'error');
@@ -237,6 +268,25 @@
       setImportBusy(false);
     }
   }
+
+  saveProject.onclick = () => {
+    if (!current || busy) return;
+    try {
+      projectId ??= projectIdentifier();
+      const project = makeDrawingProject(projectId, {
+        drawings: openDrawingWorkspace.projectState(),
+        mode,
+        units: current.units.choice,
+        navigation: viewer.ok ? viewer.projectState() : null
+      }, lastFile);
+      const name = (projectName || current.name).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'Drawing Studio';
+      downloadBlob(project, PROJECT_FILE_TYPE, `${name}.fixboi`);
+      closeFileMenu(true);
+    } catch (error) {
+      console.error('Project save failed', error);
+      say('Could not save the project: ' + error.message, 'error');
+    }
+  };
 
   function closeFileMenu(restoreFocus = false) {
     if (!fileMenu.open) return;
@@ -315,11 +365,14 @@
   $('navStatus').textContent = 'Drag to orbit · Shift-drag to pan · Scroll to zoom';
   if (!viewer.ok) $('modeNav').hidden = $('modeDraw').hidden = true;
   setMode(viewer.ok ? 'nav' : 'draw');
-  $('openFile').onclick = () => {
+  function pickFile(accept) {
     closeFileMenu(true);
+    fileInput.accept = accept;
     fileInput.click();
-  };
-  $('openFileZone').onclick = () => fileInput.click();
+  }
+  $('openFile').onclick = () => pickFile('.3dm,.obj');
+  $('openProject').onclick = () => pickFile('.fixboi');
+  $('openFileZone').onclick = () => pickFile('.3dm,.obj,.fixboi');
   $('loadSample').onclick = () => {
     closeFileMenu(true);
     openSample();
