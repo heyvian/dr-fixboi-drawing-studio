@@ -14,7 +14,7 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 4. Open **Cuts** to add or adjust a clipping plane. Choose **Align view to plane** to look straight onto it. **Fit** centres the remaining geometry and picks a scale. Open **Pens** for print weights, pen colours, depth bands, and layer-based weights.
 5. Set the paper size, orientation, title, sheet number and revision in **Paper**. Open **Check sheet contrast** to check visible ink against the paper and apply suggested colour or perspective fade adjustments. Review any shading against the ink visually.
 6. In the **Project browser**, choose **Save as…** to create a named sheet view with its framing, visible layers, clipping planes, pens and sheet setup. Select a view and choose **Open view**, double-click it or press Enter on the row. **Update** replaces its saved settings, and **Rename** changes its name. **Delete** asks for confirmation.
-7. Use **Export SVG** for Illustrator, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to print the same vector artwork. In Plan, **Paper → Print floor set** prints one vector sheet per floor at a shared scale. Choose **Actual size** or **100%** in the print dialog to keep that scale.
+7. Use **Export SVG** for Illustrator, **Export PSD** for Photoshop, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to print the same vector artwork. In Plan, **Paper → Print floor set** prints one vector sheet per floor at a shared scale. Choose **Actual size** or **100%** in the print dialog to keep that scale.
 
 Choose **Expand sheet** to inspect the current sheet in a full-window viewer. Zoom and scroll independently of the sheet’s print scale and placement. With the preview area focused, use **+** and **−** to zoom, **0** to fit, and **Escape** to close.
 
@@ -41,6 +41,12 @@ In **Pens**, choose **Camera distance** to assign pen widths from nearest to far
 The exported SVG contains editable vector artwork, organized by pen weight and treatment with a separate section-cut layer when present. It uses the chosen paper dimensions and physical point coordinates, so strokes retain their on-sheet weight when opened at the exported size. Artwork is trimmed to the sheet or floor bounds before export. Titles, floor captions and scale labels are vector outlines, so Illustrator needs no matching installed font. The bundled outline font covers Latin, Greek, Cyrillic and common drawing symbols.
 
 Click **Export SVG** to choose whether to include the paper and annotations and whether strokes should be grouped or individually selectable. Grouped strokes produce a lighter document for complex models. Click **Export** in the dialog to download the SVG. Drawing Studio remembers these options in the current browser. The dialog also has the Illustrator layer script and five steps for turning the SVG into a named-layer AI file.
+
+### Photoshop
+
+Choose **Export PSD** on the drawing sheet. The default is 300 ppi at the selected paper size, so a landscape 11 × 17 in sheet exports at 5100 × 3300 pixels. The PSD records that resolution and the sRGB colour profile. Pen weights, outlines, colour fills, section treatments, title, scale and floor labels are organized into named groups and editable pixel layers. Paper is a separate layer. Turn it off for a transparent sheet background. Cut hatch backing stays on its own layer, where you can hide it separately.
+
+PSD options are remembered independently of SVG options and travel with saved `.fixboi` projects. For very large or complex sheets, choose a lower resolution if the browser reaches its export size limit.
 
 ## Rhino import (best effort)
 
@@ -76,6 +82,7 @@ tools/      Illustrator script to turn exported SVG into layers
 - `app.js` handles the File menu and imports a revision before swapping it into the open project.
 - `model-import.js` converts Rhino geometry to metres relative to the project datum and tracks a stable key for each layer.
 - `drawing-ui.js` stores sheet and saved-view settings, including the styles of absent layers so they can be recovered if those layers return.
+- `drawing-psd.js` turns the vector artwork into cropped pixel layers with sheet offsets and print resolution metadata.
 - `project-file.js` packs the project settings and original source bytes into a portable `.fixboi` file.
 
 ## Tests
@@ -92,4 +99,5 @@ The default browser smoke test uses Microsoft Edge. With Chromium and the develo
 - [rhino3dm](https://github.com/mcneel/rhino3dm) and [openNURBS](https://github.com/mcneel/opennurbs) provide the browser and Node readers for Rhino geometry, layers, colours, and block data.
 - [OpenType.js](https://opentype.js.org/) converts SVG labels into outlines from the bundled [DejaVu Sans](https://dejavu-fonts.github.io/) subset. See the [OpenType.js licence](src/vendor/opentype-LICENSE.txt) and [DejaVu licence](src/vendor/DejaVu-LICENSE.txt). [FontTools](https://fonttools.readthedocs.io/) generated the subset.
 - [jsPDF](https://github.com/parallax/jsPDF) and [svg2pdf.js](https://github.com/yWorks/svg2pdf.js) produce the vector PDF. See the [jsPDF licence](src/vendor/jspdf-LICENSE.txt) and [svg2pdf.js licence](src/vendor/svg2pdf-LICENSE.txt).
+- [ag-psd](https://github.com/Agamnentzar/ag-psd) writes the Photoshop document and embeds an sRGB profile from [Compact ICC Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles). See the [PSD exporter licences](src/vendor/ag-psd-LICENSE.txt).
 - [Playwright](https://playwright.dev/) runs the end-to-end tests in [Chromium](https://www.chromium.org/). [Node.js](https://nodejs.org/) runs the development server and importer tests.

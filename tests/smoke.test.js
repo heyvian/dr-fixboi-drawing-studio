@@ -713,6 +713,103 @@ const { version } = require('../package.json');
   await page.click('#saveView');
   assert.strictEqual(await page.locator('#savedViews button').count(), 0);
 
+  const exportPage = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  exportPage.on('pageerror', (error) => errors.push(error.message));
+  try {
+    const { readPsd, initializeCanvas } = require('../src/vendor/ag-psd.min.js');
+    initializeCanvas(() => { throw Error('PSD tests read raw pixel data'); }, (width, height) =>
+      ({ width, height, data: new Uint8ClampedArray(width * height * 4) }));
+    const readOptions = { useImageData: true, skipThumbnail: true };
+    await exportPage.goto(appUrl);
+    // The bottom face must point outwards for the section to enclose a hatchable solid.
+    const closedBox = Buffer.from(obj.replace('f 1 2 3 4', 'f 1 4 3 2'));
+    const openBox = () => exportPage.setInputFiles('#fileInput', { name: 'psd-test.obj', buffer: closedBox, mimeType: 'text/plain' });
+    await openBox();
+    await exportPage.click('#modeDraw');
+    await exportPage.click('#paperTab');
+    await exportPage.selectOption('#drawingPaper', 'tabloid');
+    await exportPage.selectOption('#drawingOrientation', 'landscape');
+    await exportPage.click('#clipMenuToggle');
+    await exportPage.click('#addDrawingPlane');
+    await exportPage.click('#alignDrawingPlane');
+    await exportPage.selectOption('#drawingCutTreatment', 'crosshatch');
+    const photoshop = exportPage.getByRole('dialog', { name: 'Export Photoshop PSD' });
+    await exportPage.click('#exportPhotoshop');
+    assert.strictEqual(await exportPage.inputValue('#psdResolution'), '300');
+    const dimensions = await exportPage.locator('#psdDimensions').textContent();
+    assert.match(dimensions.replace(/[^\d×]/g, ''), /^5100×3300$/);
+    await exportPage.selectOption('#psdResolution', '600');
+    assert(await exportPage.locator('#confirmPsdExport').isDisabled());
+    assert.match(await photoshop.getByRole('alert').textContent(), /Choose a lower resolution/);
+    await exportPage.selectOption('#psdResolution', '300');
+    await exportPage.uncheck('#psdPaper');
+
+    async function readExport() {
+      const [download] = await Promise.all([exportPage.waitForEvent('download'), exportPage.click('#confirmPsdExport')]);
+      assert.match(download.suggestedFilename(), /-tabloid-1-\d+\.psd$/);
+      return readPsd(await fs.promises.readFile(await download.path()), readOptions);
+    }
+    {
+      const file = await readExport();
+      assert.deepStrictEqual([file.width, file.height], [5100, 3300]);
+      assert.strictEqual(file.imageResources.resolutionInfo.horizontalResolution, 300);
+      assert.strictEqual(file.imageResources.resolutionInfo.verticalResolutionUnit, 'PPI');
+      assert(file.imageResources.iccProfile.length > 0);
+      assert.strictEqual(file.imageData.data[3], 0, 'paper off retains transparency in the merged image');
+      assert.deepStrictEqual(file.children.map(({ name }) => name), ['Pen weights', 'Sections', 'Sheet annotations']);
+      assert.deepStrictEqual(file.children[1].children.map(({ name }) => name), ['Cut hatch backing', 'Cut hatch', 'Section cuts']);
+      const hatch = file.children[1].children[1];
+      assert(hatch.left > 0 && hatch.right < file.width, 'the hatch bitmap is positioned within the sheet');
+      assert(hatch.imageData.data.some((channel, i) => i % 4 === 3 && channel > 0), 'the hatch has visible pixels');
+      assert.strictEqual(file.children[2].children[0].name, 'Title and scale');
+    }
+
+    // A 0.50 mm stroke should cover about 5.91 pixels at 300 ppi, counting antialiased edges.
+    const straightLine = await exportPage.evaluate(async () => {
+      const sheet = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88">
+        <g data-layer="Pen 1"><path d="M10 44H78" stroke="black" stroke-width="${0.5 * 88 / 25.4}" /></g>
+        </svg>`, 'image/svg+xml');
+      return [...await createDrawingPsd(sheet.documentElement, { width: 1, height: 1 }, 300, new AbortController().signal, () => {})];
+    });
+    const stroke = readPsd(Uint8Array.from(straightLine), readOptions).children[0].children[0].imageData;
+    let coverage = 0;
+    for (let row = 0; row < stroke.height; row++) coverage += stroke.data[(row * stroke.width + (stroke.width >> 1)) * 4 + 3] / 255;
+    assert(Math.abs(coverage - 0.5 * 300 / 25.4) < 0.2, `0.50 mm stroke exported with ${coverage} px coverage`);
+
+    await exportPage.click('#exportPhotoshop');
+    await exportPage.selectOption('#psdResolution', '150');
+    await exportPage.check('#psdPaper');
+    await exportPage.uncheck('#psdAnnotations');
+    const second = await readExport();
+    assert.deepStrictEqual([second.width, second.height], [2550, 1650]);
+    assert.strictEqual(second.imageResources.resolutionInfo.verticalResolution, 150);
+    assert.strictEqual(second.children[0].name, 'Paper');
+    assert.strictEqual(second.imageData.data[3], 255);
+    assert(!second.children.some(({ name }) => name === 'Sheet annotations'));
+    assert.deepStrictEqual(await exportPage.evaluate(() => openDrawingWorkspace.projectState().export.psd),
+      { ppi: 150, paper: true, annotations: false }, 'PSD preferences are included in project settings');
+    await exportPage.reload();
+    await openBox();
+    await exportPage.click('#modeDraw');
+    await exportPage.click('#exportPhotoshop');
+    assert.strictEqual(await exportPage.inputValue('#psdResolution'), '150');
+    assert.strictEqual(await exportPage.isChecked('#psdAnnotations'), false);
+    await exportPage.keyboard.press('Escape');
+    await exportPage.click('#exportDrawing');
+    assert.strictEqual(await exportPage.isChecked('#exportAnnotations'), true, 'PSD preferences are independent of SVG preferences');
+    await exportPage.keyboard.press('Escape');
+    await exportPage.click('[data-sheet-view="plan"]');
+    await exportPage.click('#paperTab');
+    await exportPage.selectOption('#drawingPlanSheet', 'floors');
+    await exportPage.click('#exportPhotoshop');
+    await exportPage.check('#psdAnnotations');
+    const floorSet = await readExport();
+    assert.deepStrictEqual(floorSet.children.find(({ name }) => name === 'Sheet annotations').children.map(({ name }) => name),
+      ['Floor labels', 'Title and scale']);
+  } finally {
+    await exportPage.close();
+  }
+
   assert.deepStrictEqual(errors, []);
   await browser.close();
   console.log('smoke test passed');

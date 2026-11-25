@@ -71,7 +71,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.6.0</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.7.0</span></p>
         </div>
       </div>
     </header>
@@ -172,6 +172,7 @@
               <button type="button" id="expandDrawing" aria-haspopup="dialog" disabled>Expand sheet</button>
               <div class="toolbar-group export-tools desktop-edit" role="group" aria-label="Export and print">
                 <button type="button" class="primary" id="exportDrawing" aria-haspopup="dialog" disabled>Export SVG</button>
+                <button type="button" id="exportPhotoshop" aria-haspopup="dialog" disabled>Export PSD</button>
                 <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
                 <button type="button" id="printDrawing" title="Print the current sheet or save it as a vector PDF" disabled>Print / PDF</button>
               </div>
@@ -558,7 +559,7 @@
         </div>
       </form>
     </dialog>
-    <dialog id="svgExportDialog" aria-labelledby="svgExportTitle">
+    <dialog class="sheet-export-dialog" id="svgExportDialog" aria-labelledby="svgExportTitle">
       <form id="svgExportForm" method="dialog">
         <h2 id="svgExportTitle">Export SVG</h2>
         <div class="svg-export-content">
@@ -591,6 +592,31 @@
         </div>
       </form>
     </dialog>
+    <dialog class="sheet-export-dialog" id="psdExportDialog" aria-labelledby="psdExportTitle">
+      <form id="psdExportForm" method="dialog">
+        <h2 id="psdExportTitle">Export Photoshop PSD</h2>
+        <fieldset class="psd-export-options" id="psdExportOptions" aria-label="Photoshop export options">
+          <label class="drawing-view-field">Resolution
+            <select id="psdResolution" aria-describedby="psdDimensions">
+              <option value="72">72 ppi</option>
+              <option value="150">150 ppi</option>
+              <option value="300" selected>300 ppi</option>
+              <option value="600">600 ppi</option>
+            </select>
+          </label>
+          <output id="psdDimensions" for="psdResolution"></output>
+          <label class="check"><input id="psdPaper" type="checkbox" checked /> Include paper background</label>
+          <label class="check"><input id="psdAnnotations" type="checkbox" checked /> Include title, scale and floor labels</label>
+        </fieldset>
+        <p class="hint">Pen weights, section treatments and annotations export as separate pixel layers.</p>
+        <p id="psdExportProgress" role="status"></p>
+        <p id="psdExportError" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" id="cancelPsdExport">Cancel</button>
+          <button type="submit" class="primary" id="confirmPsdExport" disabled>Export</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="customPaperDialog" aria-labelledby="customPaperTitle">
       <form id="customPaperForm">
         <h2 id="customPaperTitle">Save a paper size</h2>
@@ -612,6 +638,7 @@
         <li><a href="https://github.com/mcneel/rhino3dm">rhino3dm</a> and <a href="https://github.com/mcneel/opennurbs">openNURBS</a> read Rhino files and their geometry and display attributes.</li>
         <li><a href="https://opentype.js.org/">OpenType.js</a> converts sheet labels to vector outlines using <a href="https://dejavu-fonts.github.io/">DejaVu Sans</a>, subset with <a href="https://fonttools.readthedocs.io/">FontTools</a>.</li>
         <li><a href="https://github.com/parallax/jsPDF">jsPDF</a> and <a href="https://github.com/yWorks/svg2pdf.js">svg2pdf.js</a> create vector PDFs. <a href="src/vendor/jspdf-LICENSE.txt">jsPDF licence</a> · <a href="src/vendor/svg2pdf-LICENSE.txt">svg2pdf.js licence</a></li>
+        <li><a href="https://github.com/Agamnentzar/ag-psd">ag-psd</a> writes layered Photoshop files with an sRGB profile from <a href="https://github.com/saucecontrol/Compact-ICC-Profiles">Compact ICC Profiles</a>. <a href="src/vendor/ag-psd-LICENSE.txt">PSD exporter licences</a></li>
         <li><a href="https://nodejs.org/">Node.js</a> runs the development server. <a href="https://playwright.dev/">Playwright</a> and <a href="https://www.chromium.org/">Chromium</a> run the browser tests.</li>
       </ul>
       <p><a href="src/vendor/opentype-LICENSE.txt">OpenType.js licence</a> · <a href="src/vendor/DejaVu-LICENSE.txt">DejaVu licence</a></p>
@@ -628,6 +655,7 @@
     <script src="src/vendor/opentype.min.js"></script>
     <script src="src/vendor/label-font.js"></script>
     <script src="src/js/drawing-export.js"></script>
+    <script src="src/js/drawing-psd.js"></script>
     <script src="src/js/workspace.js"></script>
     <script src="src/js/drawing-ui.js"></script>
     <script src="src/js/studio-art.js"></script>

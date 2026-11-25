@@ -11,6 +11,7 @@ const openDrawingWorkspace = (() => {
     progress = $('drawingProgress'),
     exportButton = $('exportDrawing'),
     confirmSvgExport = $('confirmSvgExport'),
+    psdButton = $('exportPhotoshop'),
     bluebeamButton = $('exportBluebeam'),
     printButton = $('printDrawing'),
     expandButton = $('expandDrawing'),
@@ -185,13 +186,22 @@ const openDrawingWorkspace = (() => {
     // Drawing controls remain available when the browser blocks local storage.
   }
 
-  const exportPaper = $('exportPaper'), exportAnnotations = $('exportAnnotations'), exportPaths = $('exportPaths');
+  const exportPaper = $('exportPaper'), exportAnnotations = $('exportAnnotations'), exportPaths = $('exportPaths'),
+    psdPaper = $('psdPaper'), psdAnnotations = $('psdAnnotations'), psdResolution = $('psdResolution');
   const exportStorageKey = storageKey + '-export';
-  const exportPreferences = () => ({ paper: exportPaper.checked, annotations: exportAnnotations.checked, paths: exportPaths.value });
+  const psdPreferences = () => ({ paper: psdPaper.checked, annotations: psdAnnotations.checked, ppi: Number(psdResolution.value) });
+  const exportPreferences = () => ({
+    paper: exportPaper.checked, annotations: exportAnnotations.checked, paths: exportPaths.value, psd: psdPreferences()
+  });
   function applyExportPreferences(preferences) {
     exportPaper.checked = preferences?.paper !== false;
     exportAnnotations.checked = preferences?.annotations !== false;
     exportPaths.value = preferences?.paths === 'individual' ? 'individual' : 'batch';
+    if (preferences?.psd) {
+      psdPaper.checked = preferences.psd.paper !== false;
+      psdAnnotations.checked = preferences.psd.annotations !== false;
+      psdResolution.value = [72, 150, 300, 600].includes(preferences.psd.ppi) ? String(preferences.psd.ppi) : '300';
+    }
   }
   function saveExportPreferences() {
     try {
@@ -205,7 +215,8 @@ const openDrawingWorkspace = (() => {
   } catch {
     // The defaults are already set in the controls.
   }
-  for (const control of [exportPaper, exportAnnotations, exportPaths]) control.onchange = saveExportPreferences;
+  for (const control of [exportPaper, exportAnnotations, exportPaths, psdPaper, psdAnnotations])
+    control.onchange = saveExportPreferences;
 
   const viewList = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus'),
     viewDialog = $('savedViewDialog'), viewError = $('savedViewError');
@@ -1277,6 +1288,7 @@ const openDrawingWorkspace = (() => {
   function setDrawingOutputAvailable(available) {
     exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = expandButton.disabled = !available;
     bluebeamButton.disabled = !available || exportingPdf;
+    syncPsdExport();
   }
   function queueDrawing() {
     saveDrawing();
@@ -2121,6 +2133,67 @@ const openDrawingWorkspace = (() => {
     }
     svgExportDialog.close();
     downloadBlob(svg, 'image/svg+xml', filename);
+  };
+
+  const psdDialog = $('psdExportDialog'), psdForm = $('psdExportForm'), confirmPsd = $('confirmPsdExport'),
+    psdOptions = $('psdExportOptions'), psdDimensions = $('psdDimensions'), psdProgress = $('psdExportProgress'),
+    psdError = $('psdExportError');
+  let psdJob = null;
+  function syncPsdExport(checkSize = false) {
+    psdButton.disabled = exportButton.disabled || Boolean(psdJob);
+    if (!psdDialog.open) return;
+    const ppi = psdPreferences().ppi;
+    const [width, height] = drawingPsdSize(paperDimensions(), ppi);
+    psdDimensions.value = `${width.toLocaleString()} × ${height.toLocaleString()} px`;
+    const fits = drawingPsdCanFit(width, height);
+    confirmPsd.disabled = psdButton.disabled || !fits;
+    if (checkSize) showPsdError(fits ? '' : drawingPsdTooLarge);
+  }
+  function showPsdError(message) {
+    psdError.textContent = message;
+    psdError.hidden = !message;
+  }
+  psdButton.onclick = () => {
+    psdDialog.showModal();
+    syncPsdExport(true);
+  };
+  psdResolution.onchange = () => {
+    saveExportPreferences();
+    syncPsdExport(true);
+  };
+  psdDialog.addEventListener('cancel', () => psdJob?.abort());
+  $('cancelPsdExport').onclick = () => {
+    psdJob?.abort();
+    psdDialog.close();
+  };
+  psdForm.onsubmit = async (event) => {
+    event.preventDefault();
+    if (confirmPsd.disabled) return;
+    const { paper, annotations, ppi } = psdPreferences();
+    const filename = drawingFilename('psd');
+    const signal = (psdJob = new AbortController()).signal;
+    psdOptions.disabled = true;
+    showPsdError('');
+    psdProgress.textContent = 'Preparing sheet artwork…';
+    syncPsdExport();
+    try {
+      await drawingPsdYield();
+      signal.throwIfAborted();
+      const vector = vectorDrawingSheet({ includePaper: paper, includeAnnotations: annotations, chunkSize: 256 });
+      const data = await createDrawingPsd(vector, paperDimensions(), ppi, signal, (message) => { psdProgress.textContent = message; });
+      psdDialog.close();
+      downloadBlob(data, 'image/vnd.adobe.photoshop', filename);
+    } catch (error) {
+      if (!signal.aborted) {
+        showPsdError(error instanceof RangeError ? drawingPsdTooLarge : error.message || 'The PSD could not be prepared.');
+      }
+    } finally {
+      psdJob = null;
+      psdOptions.disabled = false;
+      psdProgress.textContent = '';
+      syncPsdExport();
+      if (!psdDialog.open && !psdButton.disabled) psdButton.focus();
+    }
   };
   bluebeamButton.onclick = async () => {
     exportingPdf = bluebeamButton.disabled = true;

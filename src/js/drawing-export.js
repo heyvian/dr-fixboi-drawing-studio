@@ -103,20 +103,22 @@ function convertDrawingSvgToPoints(root) {
   return root;
 }
 
+function loadDrawingExportScript(name, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'src/vendor/' + name;
+    script.onload = resolve;
+    script.onerror = () => {
+      script.remove();
+      reject(Error(errorMessage));
+    };
+    document.head.append(script);
+  });
+}
+
 let pdfTools;
 async function createBluebeamPdf(svg, { width, height }) {
-  function loadScript(name) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'src/vendor/' + name;
-      script.onload = resolve;
-      script.onerror = () => {
-        script.remove();
-        reject(Error('The PDF exporter could not be loaded.'));
-      };
-      document.head.append(script);
-    });
-  }
+  const loadScript = (name) => loadDrawingExportScript(name, 'The PDF exporter could not be loaded.');
   pdfTools ??= (async () => {
     if (!window.jspdf?.jsPDF) await loadScript('jspdf.umd.min.js');
     if (!window.jspdf.jsPDF.API.svg) await loadScript('svg2pdf.umd.min.js');
