@@ -36,7 +36,8 @@ const openDrawingWorkspace = (() => {
       a3: [297 / 25.4, 420 / 25.4],
       a2: [420 / 25.4, 594 / 25.4]
     },
-    viewNames = ['axo', 'plan', 'elevation', 'nav', 'aligned'];
+    projectionNames = { axo: 'Axonometric', plan: 'Plan', elevation: 'Elevation', nav: 'Captured view', aligned: 'Cut' },
+    viewNames = Object.keys(projectionNames);
   const customPaperStorageKey = storageKey + '-paper-sizes';
   const customPapers = new Map();
   const validPaperSide = (inches) => Number.isFinite(inches) && inches >= 4 - 1e-8 && inches <= 48 + 1e-8;
@@ -200,7 +201,9 @@ const openDrawingWorkspace = (() => {
     };
   }
 
-  const viewPicker = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus');
+  const viewList = $('savedViews'), viewName = $('savedViewName'), viewStatus = $('savedViewStatus'),
+    viewDialog = $('savedViewDialog'), viewError = $('savedViewError');
+  let selectedViewName = '', viewAction = '';
   const viewsStorageKey = () => storageKey + '-views-' + modelIdentity;
   const activeStorageKey = () => storageKey + '-active-' + modelIdentity;
   const titleFields = [$('drawingTitle'), $('drawingNumber'), $('drawingRevision')];
@@ -241,12 +244,37 @@ const openDrawingWorkspace = (() => {
     for (const layer of sourceModel.layers) layer.visible = !hidden.has(layer.key);
   }
   function refreshSavedViews(selection = '') {
-    viewPicker.replaceChildren(
-      new Option(savedViews.length ? 'Select a saved view' : 'No saved views', ''),
-      ...savedViews.map(({ name }) => new Option(name, name))
-    );
-    viewPicker.value = selection;
-    $('recallView').disabled = $('deleteView').disabled = !viewPicker.value;
+    viewList.replaceChildren(...savedViews.map(({ name, settings: saved }) => {
+      const row = document.createElement('button'), label = document.createElement('strong'), detail = document.createElement('small');
+      row.type = 'button';
+      row.className = 'saved-view-row';
+      row.dataset.name = name;
+      label.textContent = name;
+      const projection = saved.view === 'aligned' && saved.sectionProjection === 'perspective'
+        ? 'Perspective cut' : projectionNames[saved.view] || 'Drawing';
+      detail.textContent = `${projection} · ${saved.scale === 'auto' || !saved.scale ? 'Auto fit' : `1:${saved.scale}`}`;
+      row.append(label, detail);
+      row.onclick = () => {
+        selectSavedView(name);
+        savedViewMessage('');
+      };
+      row.ondblclick = openSavedView;
+      row.onkeydown = (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        selectSavedView(name);
+        openSavedView();
+      };
+      return row;
+    }));
+    $('savedViewsEmpty').hidden = Boolean(savedViews.length);
+    $('savedViewCount').textContent = savedViews.length;
+    selectSavedView(selection);
+  }
+  function selectSavedView(name) {
+    selectedViewName = name;
+    for (const row of viewList.children) row.setAttribute('aria-pressed', String(row.dataset.name === name));
+    for (const id of ['recallView', 'updateView', 'renameView', 'deleteView']) $(id).disabled = !name;
   }
   function savedViewMessage(message) {
     viewStatus.textContent = message;
@@ -262,27 +290,8 @@ const openDrawingWorkspace = (() => {
       savedViewMessage('Browser storage is unavailable. Changes apply to this session only.');
     }
   }
-  viewPicker.onchange = () => {
-    viewName.value = viewPicker.value;
-    $('recallView').disabled = $('deleteView').disabled = !viewPicker.value;
-    savedViewMessage('');
-  };
-  $('saveView').onclick = () => {
-    const name = viewName.value.trim();
-    if (!name) {
-      savedViewMessage('Enter a name for this view.');
-      viewName.focus();
-      return;
-    }
-    const snapshot = { name, ...structuredClone(currentSnapshot()) };
-    const next = savedViews.slice();
-    const index = next.findIndex((view) => view.name === name);
-    if (index < 0) next.push(snapshot);
-    else next[index] = snapshot;
-    persistViews(next, name, `Saved “${name}”.`);
-  };
-  $('recallView').onclick = () => {
-    const snapshot = savedViews.find(({ name }) => name === viewPicker.value);
+  function openSavedView() {
+    const snapshot = savedViews.find(({ name }) => name === selectedViewName);
     if (!snapshot) return;
     stopPlacing();
     restoreSnapshot(snapshot);
@@ -290,14 +299,57 @@ const openDrawingWorkspace = (() => {
     geometry = null;
     clampPlanes();
     syncSettings();
+    load.onOpenSavedView?.();
     queueDrawing();
-    savedViewMessage(`Recalled “${snapshot.name}”.`);
-  };
-  $('deleteView').onclick = () => {
-    const name = viewPicker.value;
-    if (!name) return;
-    viewName.value = '';
-    persistViews(savedViews.filter((view) => view.name !== name), '', `Deleted “${name}”.`);
+    savedViewMessage(`Opened “${snapshot.name}”.`);
+  }
+  $('recallView').onclick = openSavedView;
+  for (const [button, action, title, confirm] of [
+    ['newView', 'create', 'Save drawing view', 'Save view'], ['renameView', 'rename', 'Rename drawing view', 'Rename view'],
+    ['updateView', 'update', 'Update drawing view', 'Update view'], ['deleteView', 'delete', 'Delete drawing view', 'Delete view']
+  ]) {
+    $(button).onclick = () => {
+      viewAction = action;
+      const needsName = action === 'create' || action === 'rename';
+      const note = $('savedViewDialogNote');
+      note.hidden = needsName;
+      note.textContent = action === 'update' ? `Replace “${selectedViewName}” with the current drawing settings?` :
+        `Remove “${selectedViewName}” from the project browser?`;
+      viewError.hidden = true;
+      $('savedViewNameField').hidden = !needsName;
+      $('savedViewDialogTitle').textContent = title;
+      $('saveView').textContent = confirm;
+      $('saveView').classList.toggle('delete-confirm', action === 'delete');
+      viewName.value = action === 'rename' ? selectedViewName : '';
+      viewDialog.showModal();
+      if (needsName) viewName.select();
+      else $('cancelViewAction').focus();
+    };
+  }
+  $('cancelViewAction').onclick = () => viewDialog.close();
+  $('savedViewForm').onsubmit = (event) => {
+    event.preventDefault();
+    const needsName = viewAction === 'create' || viewAction === 'rename';
+    const name = needsName ? viewName.value.trim() : selectedViewName;
+    if (needsName && (!name || savedViews.some((view) =>
+      view.name.toLowerCase() === name.toLowerCase() && (viewAction !== 'rename' || view.name !== selectedViewName)))) {
+      viewError.textContent = name ? 'That name is already in use.' : 'Enter a name for this view.';
+      viewError.hidden = false;
+      viewName.focus();
+      return;
+    }
+    let next = savedViews.slice();
+    const index = next.findIndex((view) => view.name === selectedViewName);
+    const snapshot = () => ({ name, ...structuredClone(currentSnapshot()) });
+    if (viewAction === 'create') next.push(snapshot());
+    else if (viewAction === 'rename') next[index] = { ...next[index], name };
+    else if (viewAction === 'update') next[index] = snapshot();
+    else next.splice(index, 1);
+    const deleted = viewAction === 'delete';
+    const verb = { create: 'Saved', rename: 'Renamed', update: 'Updated', delete: 'Deleted' }[viewAction];
+    viewDialog.close();
+    persistViews(next, deleted ? '' : name, `${verb} “${name}”.`);
+    (deleted ? $('newView') : [...viewList.children].find((row) => row.dataset.name === name))?.focus();
   };
 
   // Storeys are measured up from the model's lowest point at the user's storey height.
@@ -367,18 +419,6 @@ const openDrawingWorkspace = (() => {
   }
   const compass = $('drawingCompass');
   const orientationStatus = $('orientationStatus');
-  const clipMenu = $('clipMenu'), penMenu = $('penMenu');
-  for (const [menu, other] of [[clipMenu, penMenu], [penMenu, clipMenu]]) {
-    menu.querySelector('summary').addEventListener('click', () => {
-      if (!menu.open) other.open = false;
-    });
-    menu.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !menu.open) return;
-      event.stopPropagation();
-      menu.open = false;
-      menu.querySelector('summary').focus();
-    });
-  }
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
   for (const button of sheetViewButtons)
     button.onclick = () => selectSheetView(button.dataset.sheetView, true);
@@ -391,18 +431,14 @@ const openDrawingWorkspace = (() => {
   function syncCompass() {
     const elevation = settings.view === 'elevation';
     const plan = settings.view === 'plan';
-    compass.hidden = $('drawingOrientationHelp').hidden = settings.view !== 'axo' && !elevation && !plan;
+    $('drawingOrientationGroup').hidden = settings.view !== 'axo' && !elevation && !plan;
+    $('drawingOrientationHelp').hidden = false;
     compass.setAttribute('aria-label', plan ? 'Plan orientation compass' : 'View direction compass');
     $('drawingOrbitField').hidden = !elevation;
-    const viewPicker = $('drawingView');
-    viewPicker.querySelector('[value="aligned"]').disabled = !currentPlane();
-    viewPicker.value = settings.view;
-    clipMenu.classList.toggle('view-aligned', settings.view === 'aligned');
     $('useNavView').disabled = !viewer.ok;
     for (const button of sheetViewButtons) {
       const view = button.dataset.sheetView;
-      button.disabled = view === 'nav' && !base;
-      viewPicker.querySelector(`[value="${view}"]`).disabled = button.disabled;
+      button.disabled = (view === 'nav' && !base) || (view === 'aligned' && !currentPlane());
       button.setAttribute('aria-pressed', String(view === settings.view));
     }
     const heading = compassHeading(viewCamera().az + (plan ? Math.PI : 0));
@@ -510,6 +546,7 @@ const openDrawingWorkspace = (() => {
     for (const stroke of sheetArtwork.querySelectorAll('[data-perspective-stroke]'))
       stroke.setAttribute('stroke-opacity', perspectiveOpacity());
     saveDrawing();
+    checkSheetContrast();
   };
   function setLens(mm) {
     settings.sectionLens = clamp(Math.round(mm), 8, 200);
@@ -569,8 +606,78 @@ const openDrawingWorkspace = (() => {
     return group;
   }
   function sheetInk(paper) {
-    return dot(rgb(paper), [0.21, 0.72, 0.07]) < 0.45 ? '#ebeee8' : '#243c30';
+    const preferred = dot(rgb(paper), [0.21, 0.72, 0.07]) < 0.45 ? '#ebeee8' : '#243c30';
+    return accessibleInk(preferred, paper, 4.5);
   }
+
+  const contrastPanel = $('sheetContrast'), contrastStatus = $('sheetContrastStatus'),
+    contrastResults = $('sheetContrastResults'), applyContrast = $('applySheetContrast');
+  let contrastSuggestions = new Map(), recommendedFade = null;
+  function checkSheetContrast() {
+    if (!contrastPanel.open) return;
+    if (!loading.hidden) {
+      contrastStatus.textContent = 'Checking the current sheet…';
+      contrastResults.hidden = applyContrast.disabled = true;
+      return;
+    }
+    const paper = settings.pens.paper;
+    const entries = new Map();
+    for (const mark of sheet.querySelectorAll('[data-contrast-ink]')) {
+      const key = mark.dataset.contrastInk;
+      const faded = mark.hasAttribute('data-perspective-stroke');
+      const opacity = faded ? perspectiveOpacity() : 1;
+      if (!opacity) continue;
+      entries.set(`${key}/${faded}`, { key, faded, opacity, ink: mark.getAttribute('stroke') || mark.getAttribute('fill') });
+    }
+    const fails = [...entries.values()].map((entry) => ({ ...entry, ratio: paperContrast(entry.ink, paper, entry.opacity) }))
+      .filter(({ ratio }) => ratio < 3);
+    recommendedFade = settings.perspectiveFade;
+    if (fails.some(({ faded }) => faded)) {
+      // Find the strongest fade that still permits black or white ink to reach the target.
+      const maxContrast = (fade) => Math.max(...['#000000', '#ffffff'].map((ink) => paperContrast(ink, paper, (100 - fade) / 100)));
+      while (recommendedFade > 0 && maxContrast(recommendedFade) < 3) recommendedFade--;
+    }
+    contrastSuggestions = new Map();
+    for (const { key, faded, ink } of fails.sort((a, b) => Number(a.faded) - Number(b.faded))) {
+      const opacity = faded ? (100 - recommendedFade) / 100 : 1;
+      contrastSuggestions.set(key, accessibleInk(ink, paper, 3, opacity));
+    }
+    const ratioLabel = (ratio) => `${(Math.floor(ratio * 100) / 100).toFixed(2)}:1`;
+    const labels = ratioLabel(paperContrast(sheetInk(paper), paper));
+    contrastStatus.textContent = !entries.size ? 'Draw something to check the sheet ink.' : fails.length
+      ? `${fails.length} ink ${fails.length === 1 ? 'treatment needs' : 'treatments need'} more contrast. Labels ${labels}.`
+      : `Visible ink passes the paper contrast check. Labels ${labels}.`;
+    contrastResults.replaceChildren(...fails.map(({ key, faded, ink, ratio }) => {
+      const item = document.createElement('li');
+      const label = key === 'cut' ? 'Cut fill or hatch' : DRAWING_DETAIL_PENS[key]?.label ||
+        (settings.pens.mode === 'rhino' ? 'Rhino print ink' : `Pen ${Number(key.split('-')[1]) + 1}`);
+      const suggested = contrastSuggestions.get(key);
+      item.textContent = `${label}${faded ? ' behind cut' : ''} · ${ratioLabel(ratio)}${suggested !== ink ? ` → ${suggested}` : ''}`;
+      return item;
+    }));
+    if (recommendedFade !== settings.perspectiveFade) {
+      const item = document.createElement('li');
+      item.textContent = `Lighten beyond cut · ${settings.perspectiveFade}% → ${recommendedFade}%`;
+      contrastResults.append(item);
+    }
+    contrastResults.hidden = !contrastResults.children.length;
+    applyContrast.disabled = !fails.length;
+  }
+  contrastPanel.ontoggle = checkSheetContrast;
+  applyContrast.onclick = () => {
+    for (const [key, ink] of contrastSuggestions) {
+      if (key === 'cut') settings.cutColor = ink;
+      else if (Object.hasOwn(settings.pens.detailPens, key)) settings.pens.detailPens[key].color = ink;
+      else settings.pens.colors[Number(key.split('-')[1])] = ink;
+    }
+    settings.perspectiveFade = recommendedFade;
+    syncPenControls();
+    syncCutStyle();
+    syncPerspectiveFade();
+    applyContrast.disabled = true;
+    contrastStatus.focus();
+    queueDrawing();
+  };
 
   function drawingNorthArrow({ right, up }, x, y, ink) {
     // The drawing's north is +Z (Rhino +Y). Project it onto the sheet so the arrow follows orbit and cut views.
@@ -578,7 +685,7 @@ const openDrawingWorkspace = (() => {
       northX = right[2] / projected,
       northY = -up[2] / projected,
       angle = (Math.atan2(northX, -northY) * 180) / Math.PI;
-    const arrow = svgElement('g', { 'aria-label': 'North arrow', 'data-north-arrow': '' });
+    const arrow = svgElement('g', { role: 'img', 'aria-label': 'North arrow', 'data-north-arrow': '' });
     const ring = svgElement('g', { transform: `translate(${x} ${y}) rotate(${angle})` });
     // A narrow ring with three tabs; the fourth tab is the north pointer.
     ring.append(
@@ -655,14 +762,15 @@ const openDrawingWorkspace = (() => {
         svgElement('image', { width: frame.width, height: frame.height, href: frame.wash })
       );
     const textureLayer = markSvgLayer(svgElement('g', {}), 'Surface texture');
-    function path(d, width, stroke, receding = false) {
+    function path(d, width, stroke, contrastInk, receding = false) {
       const line = svgElement('path', {
         d,
         fill: 'none',
         stroke,
         'stroke-width': (width * DRAWING_PIXELS_PER_INCH) / 25.4,
         'stroke-linecap': 'round',
-        'stroke-linejoin': 'round'
+        'stroke-linejoin': 'round',
+        'data-contrast-ink': contrastInk
       });
       if (receding) {
         line.setAttribute('data-perspective-stroke', '');
@@ -673,24 +781,25 @@ const openDrawingWorkspace = (() => {
     const layers = [colorLayer, textureLayer];
     const firstInk = ink.findIndex((mark, i) => mark || perspective?.ink[i]);
     const order = widths.map((_, i) => i).sort((a, b) => widths[a] - widths[b]);
+    const penKey = (i) => `pen-${pens.mode === 'rhino' ? 0 : i}`;
     for (const i of order) {
       const width = widths[i],
         stroke = colors[i];
       for (const [paths, receding] of strokes)
-        if (paths.texture[i]) textureLayer.append(path(paths.texture[i], width, stroke, receding));
+        if (paths.texture[i]) textureLayer.append(path(paths.texture[i], width, stroke, penKey(i), receding));
       const layer = markSvgLayer(
         svgElement('g', { 'data-weight-mm': width }),
         pens.mode === 'rhino' ? `Rhino print width · ${width} mm` : `Pen ${i + 1} · ${width.toFixed(2)} mm`
       );
       for (const [paths, receding] of strokes) {
         if (!paths.ink[i]) continue;
-        const linework = path(paths.ink[i], width, stroke, receding);
+        const linework = path(paths.ink[i], width, stroke, penKey(i), receding);
         if (identified && i === firstInk && !layer.hasChildNodes()) linework.id = 'drawingLinework';
         layer.append(linework);
       }
       layers.push(layer);
       if (i === heaviest && perspective?.section)
-        layer.append(path(perspective.section, width, stroke, true));
+        layer.append(path(perspective.section, width, stroke, penKey(i), true));
     }
     for (const [key, field] of [
       ['componentOutlines', 'componentInk'],
@@ -700,18 +809,19 @@ const openDrawingWorkspace = (() => {
       const { width, color } = pens.detailPens[key];
       const layer = markSvgLayer(svgElement('g', { 'data-weight-mm': width }), DRAWING_DETAIL_PENS[key].label);
       for (const [paths, receding] of strokes)
-        if (paths[field]) layer.append(path(paths[field], width, color, receding));
+        if (paths[field]) layer.append(path(paths[field], width, color, key, receding));
       if (layer.hasChildNodes()) layers.push(layer);
     }
     if (cutFills?.length) {
       const hatched = settings.cutTreatment !== 'solid';
       const fills = markSvgLayer(svgElement('g', { fill: hatched ? pens.paper : settings.cutColor }),
         hatched ? 'Cut hatch backing' : 'Cut fill');
+      if (!hatched) fills.dataset.contrastInk = 'cut';
       for (const d of cutFills) fills.append(svgElement('path', { d, 'fill-rule': 'nonzero' }));
       layers.push(fills);
       if (cutHatch) {
         const hatch = markSvgLayer(svgElement('g', {}), 'Cut hatch');
-        const pattern = path(cutHatch, 0.15, settings.cutColor);
+        const pattern = path(cutHatch, 0.15, settings.cutColor, 'cut');
         pattern.setAttribute('stroke-linecap', 'butt');
         hatch.append(pattern);
         layers.push(hatch);
@@ -719,7 +829,7 @@ const openDrawingWorkspace = (() => {
     }
     if (section) {
       const cuts = markSvgLayer(svgElement('g', { 'data-weight-mm': widths[heaviest] }), 'Section cuts');
-      const cut = path(section, widths[heaviest], colors[heaviest]);
+      const cut = path(section, widths[heaviest], colors[heaviest], penKey(heaviest));
       if (identified) cut.id = 'drawingSections';
       cuts.append(cut);
       layers.push(cuts);
@@ -921,7 +1031,9 @@ const openDrawingWorkspace = (() => {
             ? next.optics
               ? `${currentPlane()?.axis === 'horizontal' ? 'Plan' : 'Section'} perspective · ${section.lens} mm`
               : currentPlane()?.axis === 'vertical' ? 'Section' : 'Plan section'
-            : $('drawingView').selectedOptions[0].text;
+            : projectionNames[settings.view];
+      $('sheetViewContext').textContent = `${viewLabel} · 1:${denominator}`;
+      sheet.setAttribute('aria-label', `${viewLabel} drawing sheet, scale 1 to ${denominator}`);
       // Keep SVG coordinates tied to the exact physical paper size. Only raster buffers round to pixels.
       const pageWidth = paper.width * DRAWING_PIXELS_PER_INCH,
         pageHeight = paper.height * DRAWING_PIXELS_PER_INCH;
@@ -957,6 +1069,7 @@ const openDrawingWorkspace = (() => {
       resizePaperPreview();
       setDrawingProgress('');
       showStatus();
+      checkSheetContrast();
     } catch (error) {
       if (!currentRender(revision)) return;
       console.error('Drawing render failed', error);
@@ -996,6 +1109,7 @@ const openDrawingWorkspace = (() => {
     const revision = ++renderRevision;
     if (currentRender(revision)) {
       setDrawingProgress(allPlans() ? 'Preparing floor plans…' : 'Generating drawing…');
+      checkSheetContrast();
       timer = setTimeout(() => render(revision), 45);
     } else setDrawingProgress('');
   }
@@ -1170,45 +1284,48 @@ const openDrawingWorkspace = (() => {
       ...pens.widths.map((width, i) => {
         const row = document.createElement('div'),
           name = document.createElement('span'),
-          slider = document.createElement('input'),
+          sample = document.createElement('i'),
           number = document.createElement('input'),
           color = document.createElement('input');
         row.className = 'drawing-pen-row';
-        name.textContent = `Pen ${i + 1} · mm`;
-        slider.type = 'range';
+        name.className = 'pen-sample-label';
+        name.textContent = `Pen ${i + 1}`;
+        sample.className = 'pen-sample';
+        sample.setAttribute('aria-hidden', 'true');
+        const showSample = () => {
+          sample.style.setProperty('--sample-width', `${pens.widths[i]}mm`);
+          sample.style.setProperty('--sample-ink', pens.colors[i]);
+          sample.style.setProperty('--sample-paper', pens.paper);
+        };
+        showSample();
         number.type = 'number';
         color.type = 'color';
         color.value = pens.colors[i];
         color.setAttribute('aria-label', `Pen ${i + 1} colour`);
         color.onchange = () => {
           pens.colors[i] = color.value;
+          showSample();
+          syncPenDepth();
           queueDrawing();
         };
-        for (const input of [slider, number]) {
-          Object.assign(input, DRAWING_PEN_LIMITS);
-          input.value = width;
-          input.setAttribute(
-            'aria-label',
-            `Pen ${i + 1} ${input === slider ? 'width slider' : 'width in millimetres'}`
-          );
-        }
+        Object.assign(number, DRAWING_PEN_LIMITS);
+        number.value = width;
+        number.setAttribute('aria-label', `Pen ${i + 1} width in millimetres`);
         const update = (value) => {
           const next = Number.isFinite(value)
             ? clamp(value, DRAWING_PEN_LIMITS.min, DRAWING_PEN_LIMITS.max)
             : pens.widths[i];
           pens.widths[i] = next;
-          slider.value = number.value = next;
+          number.value = next;
+          showSample();
           for (const select of components.querySelectorAll('select'))
             select.options[i].textContent = `Pen ${i + 1} · ${next.toFixed(2)} mm`;
           syncPenDepth();
           queueDrawing();
         };
-        slider.oninput = () => {
-          number.value = slider.value;
-        };
-        slider.onchange = () => update(slider.valueAsNumber);
         number.onchange = () => update(number.valueAsNumber);
-        row.append(name, slider, number, color);
+        name.append(sample);
+        row.append(name, number, color);
         return row;
       })
     );
@@ -1256,6 +1373,7 @@ const openDrawingWorkspace = (() => {
   };
   $('drawingPaperColor').onchange = (event) => {
     settings.pens.paper = event.target.value;
+    syncPenControls();
     queueDrawing();
   };
   $('drawingInkColor').onchange = (event) => {
@@ -1270,7 +1388,6 @@ const openDrawingWorkspace = (() => {
     const plane = currentPlane();
     if (!plane && settings.view === 'aligned') settings.view = 'axo';
     if (!base && settings.view === 'nav') settings.view = 'axo';
-    $('drawingView').value = settings.view;
     $('drawingStorey').value = Number(settings.storey.toFixed(3));
     $('drawingBodies').value = settings.bodies;
     syncCompass();
@@ -1336,7 +1453,6 @@ const openDrawingWorkspace = (() => {
     syncCompass();
     queueDrawing();
   }
-  $('drawingView').onchange = (event) => selectSheetView(event.target.value);
   $('drawingOrbit').oninput = (event) => {
     settings.viewHeadings.elevation = event.target.valueAsNumber;
     orientationStatus.hidden = true;
@@ -1552,15 +1668,13 @@ const openDrawingWorkspace = (() => {
   };
   $('alignDrawingPlane').onclick = () => {
     selectSheetView('aligned');
-    clipMenu.open = false;
-    $('clipMenuToggle').focus();
+    selectInspectorTab($('viewTab'), true);
   };
   $('placeDrawingPlane').onclick = () => {
     placing = !placing;
     $('placeDrawingPlane').setAttribute('aria-pressed', String(placing));
     sheet.dataset.placing = String(placing);
     if (placing) {
-      clipMenu.open = false;
       sheet.focus({ preventScroll: true });
     }
     showStatus();
@@ -1894,7 +2008,6 @@ const openDrawingWorkspace = (() => {
         } catch {
           savedViews = [];
         }
-        viewName.value = '';
         savedViewMessage('');
         refreshSavedViews();
       }

@@ -18,8 +18,7 @@ const viewer = (() => {
     gl = canvas.getContext('webgl', { antialias: true, alpha: false });
 
   const camera = { az: HOME.az, el: HOME.el, target: [0, 0, 0], halfHeight: 10 };
-  let revision = 0, // bumps whenever the user moves the camera, so the app can tell it changed
-    center = [0, 0, 0],
+  let center = [0, 0, 0],
     focus = [0, 0, 0], // the orbit centre: orbiting keeps this point still on screen and presets centre on it
     picking = false, // true while the next click sets the focus
     onPick = null,
@@ -131,7 +130,7 @@ const viewer = (() => {
       lastPlan = lastElevation = 0;
       camera.az = HOME.az;
       camera.el = HOME.el;
-      zoomExtents(false);
+      zoomExtents();
     } else {
       if (unitRatio !== 1) {
         focus = focus.map((coordinate) => coordinate * unitRatio);
@@ -222,7 +221,7 @@ const viewer = (() => {
   const aspect = () => canvas.clientWidth / Math.max(canvas.clientHeight, 1) || 1;
 
   // Fit every visible vertex in the window for the current orbit angles, with a small margin.
-  function zoomExtents(count = true) {
+  function zoomExtents() {
     const { right, up } = orbitBasis(camera);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const { data } of buffers)
@@ -241,7 +240,6 @@ const viewer = (() => {
     camera.target = center.map((v, i) => v + right[i] * shiftX + up[i] * shiftY);
     camera.halfHeight = Math.max((maxY - minY) / 2, (maxX - minX) / 2 / aspect(), 0.01) * 1.08;
     focus = [...center]; // extents also puts the orbit centre back in the middle of the model
-    if (count) revision++;
     draw();
   }
 
@@ -257,7 +255,6 @@ const viewer = (() => {
 
   function centerPreset() {
     camera.target = [...focus];
-    revision++;
     onMove?.();
     draw();
   }
@@ -308,7 +305,6 @@ const viewer = (() => {
     onMove?.();
     const after = basisNow();
     camera.target = focus.map((v, i) => v - after.right[i] * x - after.up[i] * y);
-    revision++;
     draw();
   }
 
@@ -372,7 +368,6 @@ const viewer = (() => {
     const { right, up } = basisNow(),
       perPixel = (2 * camera.halfHeight) / Math.max(canvas.clientHeight, 1);
     camera.target = camera.target.map((v, i) => v - right[i] * dx * perPixel + up[i] * dy * perPixel);
-    revision++;
     draw();
   }
 
@@ -385,7 +380,6 @@ const viewer = (() => {
       moveY = ny * camera.halfHeight - ny * next;
     camera.target = camera.target.map((v, i) => v + right[i] * moveX + up[i] * moveY);
     camera.halfHeight = next;
-    revision++;
     draw();
   }
 
@@ -554,9 +548,6 @@ const viewer = (() => {
     },
     pointAt,
     setFocusAt,
-    get revision() {
-      return revision;
-    },
     // What the drawing needs: the viewing angles, the point at the window centre and the half-extents
     // of the window in model units.
     snapshot: () => ({

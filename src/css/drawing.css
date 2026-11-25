@@ -26,9 +26,7 @@
  background: var(--paper);
 }
 .drawing-view-field { display: grid; gap: 4px; }
-.drawing-colours { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 12px; align-items: end; }
 .drawing-pen-row { display: grid; grid-template-columns: minmax(0, 1fr) 51px 32px; align-items: center; gap: 4px 6px; margin: 8px 0; }
-.drawing-pen-row span { grid-column: 1/-1; }
 .drawing-pen-row input { width: 100%; min-width: 0; }
 .view-compass {
  display: grid;
@@ -121,16 +119,6 @@
 .nav-stage[hidden], .nav-only[hidden] { display: none; }
 .nav-stage .hint { margin: 0; }
 .nav-views { display: inline-flex; gap: 4px; }
-.view-box {
- min-inline-size: 0;
- margin: 0 0 10px;
- padding: 5px 9px 9px;
- border: 1px solid var(--control-border);
- background: var(--paper);
-}
-.view-box legend { padding-inline: 4px; font-weight: 700; }
-.drawing-view-box { display: grid; gap: 11px; justify-items: start; padding: 9px; }
-.drawing-view-box > label { width: 100%; }
 .drawing-section-view { display: grid; gap: 8px; width: 100%; }
 .drawing-section-view .hint, .drawing-section-view input[type='range'] { margin: 0; }
 .drawing-cut-style {
@@ -144,21 +132,6 @@
 }
 .drawing-cut-fields { display: flex; gap: 12px; }
 .drawing-cut-fields input[type='number'] { width: 7ch; }
-.drawing-view-box .orientation-help { width: 100%; padding-block: 9px; border-block: 1px solid var(--line); }
-.drawing-view-box .orientation-help .hint { margin: 5px 0 0; }
-.nav-view-box {
- display: flex;
- flex-wrap: wrap;
- align-items: center;
- gap: 8px;
- max-width: 100%;
- margin: 0;
-}
-.nav-view-box .view-compass {
- grid-template-columns: repeat(3, 32px);
- grid-template-rows: repeat(3, 32px);
-}
-.nav-view-preferences { display: grid; justify-items: start; gap: 5px; }
 .nav-canvas-frame { flex: 1; min-height: 320px; position: relative; }
 #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab;
   background: #f4f7f2; border: 1px solid var(--line); touch-action: none; }
@@ -181,7 +154,6 @@
 .nav-lines .nav-angle input { flex: 1; min-width: 0; }
 .nav-lines .hint { margin: 4px 0 0; }
 /* In 3D mode the control column keeps only the help text and the layer list. */
-.drawing-workspace[data-mode=nav] .drawing-controls > :not(.keep-in-nav):not(.nav-only):not(h2) { display: none; }
 .drawing-workspace[data-mode=draw] .nav-only { display: none; }
 @media (max-width: 650px) {
   .drawing-workspace { grid-template-columns: 1fr; }

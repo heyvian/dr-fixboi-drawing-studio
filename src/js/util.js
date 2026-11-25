@@ -68,8 +68,12 @@ function createViewCompass(element, choose) {
     button.onclick = () => choose(index * 45);
     return button;
   });
-  element.append(...buttons);
+  const reading = document.createElement('span');
+  reading.className = 'compass-reading';
+  reading.setAttribute('aria-hidden', 'true');
+  element.append(...buttons, reading);
   return (heading, plan = false) => {
+    reading.textContent = heading == null ? '•' : `${heading}°`;
     buttons.forEach((button, index) => {
       button.setAttribute('aria-label', (plan ? 'Top of plan toward ' : 'View from ') + COMPASS_POINTS[index][1]);
       button.setAttribute('aria-pressed', String(heading === index * 45));

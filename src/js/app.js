@@ -15,25 +15,21 @@
   let current = null, // the model currently drawn
     lastFile = null, // remembered so changing the unit setting can re-read it
     busy = false,
-    mode = 'draw', // 'nav' (3D navigation) or 'draw' (the drawing sheet)
-    appliedRevision = 0; // the 3D camera revision the drawing was last based on
+    mode = 'draw'; // 'nav' (3D navigation) or 'draw' (the drawing sheet)
 
-  // Switch between 3D navigation and the drawing sheet. Going to the drawing copies the 3D camera in
-  // as its base when it has moved since (or when 'force' is set); sheet movements never flow back.
-  function setMode(next, force = false) {
+  // Seed a new sheet from the camera. Later camera changes reach the sheet on explicit capture.
+  function setMode(next, capture = false) {
     const snapshot = viewer.ok && next === 'draw' ? viewer.snapshot() : null;
     mode = next;
     workspace.dataset.mode = next;
     $('navStage').hidden = next !== 'nav';
     $('drawingStage').hidden = next !== 'draw';
+    $('skipViewport').href = next === 'nav' ? '#navCanvas' : '#drawingSheet';
     $('modeNav').setAttribute('aria-pressed', String(next === 'nav'));
     $('modeDraw').setAttribute('aria-pressed', String(next === 'draw'));
     if (next === 'nav') viewer.redraw();
-    else if (snapshot) {
-      const moved = viewer.revision !== appliedRevision;
-      appliedRevision = viewer.revision;
-      openDrawingWorkspace.setBase(snapshot, moved || force);
-    } else if (current) openDrawingWorkspace.refresh();
+    else if (snapshot) openDrawingWorkspace.setBase(snapshot, capture);
+    else if (current) openDrawingWorkspace.refresh();
   }
 
   // Show a message under the header. 'kind' is '' (info), 'warn' or 'error'; 'lines' are bullet points.
@@ -78,6 +74,7 @@
     current = model;
     controls.inert = false;
     dropZone.hidden = true;
+    $('skipViewport').hidden = false;
     fileName.hidden = false;
     fileName.textContent = label;
     fileName.title = label;
@@ -90,7 +87,6 @@
       setMode('nav');
       viewer.setModel(model, true);
       if (Number.isInteger(model.initialAxonometric)) viewer.axo(model.initialAxonometric);
-      appliedRevision = viewer.revision;
     } else setMode('draw');
     const { units } = model;
     unitSelect.value = units.choice;
@@ -112,15 +108,18 @@
     buildLayerList(current);
     if (viewer.ok) viewer.setModel(current, false);
   };
+  openDrawingWorkspace.onOpenSavedView = () => {
+    if (mode === 'nav') setMode('draw');
+  };
 
   // One checkbox per layer. Changing visibility rebuilds the geometry but keeps drawing settings.
   function buildLayerList(model) {
+    $('layerCount').textContent = model.layers.length;
     layerList.replaceChildren(
       ...model.layers.map((layer) => {
         const row = document.createElement('label'),
           box = document.createElement('input'),
-          swatch = document.createElement('span'),
-          count = document.createElement('span');
+          swatch = document.createElement('span');
         box.type = 'checkbox';
         box.checked = layer.visible;
         box.onchange = () => {
@@ -130,10 +129,9 @@
         };
         swatch.className = 'swatch';
         swatch.style.background = '#' + layer.color.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('');
-        count.className = 'count';
-        count.textContent = layer.triangles ? layer.triangles.toLocaleString() + ' tri' : layer.segments + ' lines';
-        row.append(box, swatch, layer.label, count);
-        row.title = layer.label;
+        const count = layer.triangles ? `${layer.triangles.toLocaleString()} triangles` : `${layer.segments} lines`;
+        row.append(box, swatch, layer.label);
+        row.title = `${layer.label} · ${count}`;
         return row;
       })
     );
@@ -224,7 +222,10 @@
   // Controls
   $('modeNav').onclick = () => mode !== 'nav' && setMode('nav');
   $('modeDraw').onclick = () => mode !== 'draw' && setMode('draw');
-  $('navToDrawing').onclick = () => setMode('draw', true);
+  $('navToDrawing').onclick = () => {
+    setMode('draw', true);
+    $('drawingSheet').focus({ preventScroll: true });
+  };
   $('navExtents').onclick = () => viewer.zoomExtents();
   // "Set orbit centre" arms the next click on the 3D view; it disarms itself once a point is picked.
   if (viewer.ok) {
@@ -252,6 +253,7 @@
       const axo = viewer.activeAxo !== null;
       const elevation = el === 0 && !axo;
       const plan = el > Math.PI / 2 - 0.001 && !axo;
+      $('navViewContext').textContent = axo ? 'Axonometric' : elevation ? 'Elevation' : plan ? 'Plan' : 'Orbit';
       $('navAxoCompass').setAttribute('aria-label', plan ? '3D plan orientation compass' : '3D view direction compass');
       showHeading(axo || elevation || plan ? compassHeading(az + (plan ? Math.PI : 0)) : null, plan);
       document.querySelector('#navStage [data-view="iso"]').setAttribute('aria-pressed', String(axo));
@@ -270,7 +272,7 @@
   }
   for (const button of document.querySelectorAll('[data-view]'))
     button.onclick = () => viewer.preset(button.dataset.view);
-  $('navStatus').textContent = 'Frame the part of the model you want to draw, then choose Draw this view.';
+  $('navStatus').textContent = 'Drag to orbit · Shift-drag to pan · Scroll to zoom';
   if (!viewer.ok) $('modeNav').hidden = $('modeDraw').hidden = true;
   setMode(viewer.ok ? 'nav' : 'draw');
   $('openFile').onclick = () => {

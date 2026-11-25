@@ -3,10 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const renderer = ['util.js', 'drawing-core.js', 'drawing-render.js']
+const renderer = ['util.js', 'contrast.js', 'drawing-core.js', 'drawing-render.js']
   .map((file) => fs.readFileSync(path.join(__dirname, '..', 'src', 'js', file), 'utf8'))
   .join('\n');
-const { drawingPens, renderDrawing, sectionHatch } = vm.runInNewContext(renderer + '\n({ drawingPens, renderDrawing, sectionHatch });');
+const { drawingPens, renderDrawing, sectionHatch, paperContrast, accessibleInk } = vm.runInNewContext(
+  renderer + '\n({ drawingPens, renderDrawing, sectionHatch, paperContrast, accessibleInk });'
+);
 
 function drawSteepFace({ cover = false, segments = 1 } = {}) {
   // From this direction the depth of the face changes by much more than the tolerance in a pixel.
@@ -99,6 +101,15 @@ for (const denominator of [50, 100, 250]) {
   const gaps = offsets.slice(1).map((offset, i) => offset - offsets[i]).filter((gap) => gap > 0.01);
   assert(gaps.length > 0 && gaps.every((gap) => Math.abs(gap - 2 * 88 / 25.4) < 0.002),
     '2 mm hatch spacing stays fixed on paper at every scale');
+}
+
+assert.equal(paperContrast('#000000', '#ffffff'), 21);
+assert.equal(paperContrast('#000000', '#ffffff', 0), 1, 'fully faded ink appears the same as the paper');
+assert.equal(accessibleInk('#000000', '#ffffff', 3, 0.2), null, 'deep fade can prevent any ink from passing');
+assert.equal(accessibleInk('#35473c', '#ffffff', 3), '#35473c', 'keep qualifying ink unchanged');
+for (const [ink, paper, opacity] of [['#c9bec4', '#f1efec', 0.82], ['#213040', '#25151c', 0.65]]) {
+  const proposed = accessibleInk(ink, paper, 3, opacity);
+  assert(proposed && proposed !== ink && paperContrast(proposed, paper, opacity) >= 3, 'choose a visible tint or shade');
 }
 
 console.log('linework tests passed');

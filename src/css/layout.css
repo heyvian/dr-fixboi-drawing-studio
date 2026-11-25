@@ -131,8 +131,3 @@ main > .drawing-workspace {
   border: 1px solid #0003;
   flex: none;
 }
-.layer-list .count {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 11px;
-}
