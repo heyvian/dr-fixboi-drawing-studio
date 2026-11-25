@@ -89,9 +89,14 @@ const openDrawingWorkspace = (() => {
   const cutTreatments = ['none', 'solid', 'diagonal', 'crosshatch'];
   const validHatchSpacing = (spacing) => clamp(Math.round(spacing * 10) / 10, 0.5, 20);
   function sectionPreferences(saved = {}) {
+    const position = saved.sectionPoint;
     return {
       sectionProjection: saved.sectionProjection === 'perspective' ? 'perspective' : 'orthographic',
       sectionLens: Number.isFinite(saved.sectionLens) ? clamp(Math.round(saved.sectionLens), 8, 200) : 35,
+      sectionOrigin: saved.sectionOrigin === 'camera' ? 'camera' : 'sheet',
+      sectionPoint: Array.isArray(position) && position.length === 2 && position.every(Number.isFinite)
+        ? position.map((value) => clamp(value, 0, 1)) : [0.5, 0.5],
+      sectionCamera: validSavedCamera(saved.sectionCamera) ? structuredClone(saved.sectionCamera) : null,
       perspectiveFade: Number.isFinite(saved.perspectiveFade) ? clamp(saved.perspectiveFade, 0, 100) : 55,
       cutTreatment: cutTreatments.includes(saved.cutTreatment) ? saved.cutTreatment : saved.cutFill === false ? 'none' : 'solid',
       cutColor: paintHex(saved.cutColor) || '#000000',
@@ -130,7 +135,7 @@ const openDrawingWorkspace = (() => {
     renderRevision = 0,
     printingFloorSet = false,
     exportingPdf = false,
-    placing = false,
+    placing = null,
     drag = null;
   function readDrawingSettings(saved) {
     const previousElevation = ['front', 'side'].includes(saved.view);
@@ -259,17 +264,20 @@ const openDrawingWorkspace = (() => {
     }
   }
   function rescaleCapturedView(ratio) {
-    if (!base || ratio === 1) return;
-    base.target = base.target.map((coordinate) => coordinate * ratio);
-    base.halfWidth *= ratio;
-    base.halfHeight *= ratio;
+    if (ratio === 1) return;
+    for (const camera of [base, settings.sectionCamera]) {
+      if (!camera) continue;
+      camera.target = camera.target.map((coordinate) => coordinate * ratio);
+      camera.halfWidth *= ratio;
+      camera.halfHeight *= ratio;
+    }
   }
   function restoreSnapshot(snapshot) {
     const camera = snapshot.base;
     base = validSavedCamera(camera) ? structuredClone(camera) : null;
+    settings = readDrawingSettings(snapshot.settings);
     if (Number.isFinite(snapshot.metresPerUnit) && snapshot.metresPerUnit > 0)
       rescaleCapturedView(sourceModel.units.metresPerUnit / snapshot.metresPerUnit);
-    settings = readDrawingSettings(snapshot.settings);
     titleFields.forEach((field, i) => { field.value = typeof snapshot.titles?.[i] === 'string' ? snapshot.titles[i] : ''; });
     if (modelIdentity === 'sample:valentine' && titleFields[0].value === 'The Valentine')
       titleFields[0].value = sourceModel.name;
@@ -559,6 +567,8 @@ const openDrawingWorkspace = (() => {
   };
 
   const sectionProjection = $('drawingSectionProjection'), lensSlider = $('drawingSectionLens');
+  const perspectiveOrigin = $('drawingPerspectiveOrigin'), perspectiveCameraStatus = $('drawingPerspectiveCameraStatus'),
+    perspectiveCoordinates = [$('drawingPerspectiveLeft'), $('drawingPerspectiveTop')];
   const lensPosition = (mm) => Math.round(1000 * Math.log(mm / 8) / Math.log(200 / 8));
   const lensMillimetres = (position) => Math.round(8 * (200 / 8) ** (position / 1000));
   const lensStops = [8, 14, 20, 24, 28, 35, 50, 85, 105, 135, 200];
@@ -583,9 +593,51 @@ const openDrawingWorkspace = (() => {
     $('drawingSectionLensNumber').value = settings.sectionLens;
     lensSlider.value = lensPosition(settings.sectionLens);
     lensSlider.setAttribute('aria-valuetext', `${settings.sectionLens} millimetres`);
+    syncPerspectiveOrigin();
     syncPerspectiveFade();
     syncCutStyle();
   }
+  function syncPerspectiveOrigin() {
+    const useCamera = settings.sectionOrigin === 'camera';
+    perspectiveOrigin.value = settings.sectionOrigin;
+    $('drawingPerspectiveSheet').hidden = useCamera;
+    $('drawingPerspectiveCamera').hidden = !useCamera;
+    $('capturePerspectiveCamera').disabled = !viewer.ok;
+    perspectiveCoordinates.forEach((input, i) => { input.value = Math.round(settings.sectionPoint[i] * 1000) / 10; });
+  }
+  function setPerspectivePoint(position) {
+    settings.sectionPoint = position.map((value) => Math.round(clamp(value, 0, 1) * 1000) / 1000);
+    syncPerspectiveOrigin();
+    queueDrawing();
+  }
+  perspectiveOrigin.onchange = (event) => {
+    stopPlacing();
+    settings.sectionOrigin = event.target.value;
+    if (settings.sectionOrigin === 'camera' && !settings.sectionCamera && viewer.ok)
+      settings.sectionCamera = viewer.snapshot();
+    syncPerspectiveOrigin();
+    queueDrawing();
+  };
+  $('capturePerspectiveCamera').onclick = () => {
+    settings.sectionCamera = viewer.snapshot();
+    queueDrawing();
+  };
+  $('centerPerspectiveOrigin').onclick = () => {
+    stopPlacing();
+    setPerspectivePoint([0.5, 0.5]);
+  };
+  perspectiveCoordinates.forEach((input, i) => {
+    input.onchange = () => {
+      if (!Number.isFinite(input.valueAsNumber)) {
+        syncPerspectiveOrigin();
+        return;
+      }
+      stopPlacing();
+      const point = settings.sectionPoint.slice();
+      point[i] = input.valueAsNumber / 100;
+      setPerspectivePoint(point);
+    };
+  });
   function facingCutIndex(camera, planes) {
     const { back } = orbitBasis(camera);
     let index = -1, cutLimit = Infinity;
@@ -605,7 +657,9 @@ const openDrawingWorkspace = (() => {
     return {
       planeIndex,
       lens: plane && settings.sectionProjection === 'perspective' ? settings.sectionLens : 0,
-      eyeLevel: plane?.axis === 'vertical' ? 1.65 : null,
+      sheetPoint: settings.sectionPoint,
+      useCamera: settings.sectionOrigin === 'camera',
+      camera: settings.sectionCamera ?? base,
       cutTreatment: settings.cutTreatment,
       hatchSpacing: settings.hatchSpacing
     };
@@ -620,6 +674,7 @@ const openDrawingWorkspace = (() => {
     $('drawingHatchField').hidden = !['diagonal', 'crosshatch'].includes(cutTreatment);
   }
   sectionProjection.onchange = (event) => {
+    stopPlacing();
     settings.sectionProjection = event.target.value;
     syncSectionControls();
     queueDrawing();
@@ -1167,6 +1222,11 @@ const openDrawingWorkspace = (() => {
       $('printFloorSet').disabled = printingFloorSet;
       resizePaperPreview();
       setDrawingProgress('');
+      const cameraNote = next.perspectiveCameraFallback
+        ? 'The camera is unavailable or behind the cut. Using the point on the sheet.'
+        : next.optics && section?.useCamera ? 'Using the captured 3D camera.' : '';
+      if (perspectiveCameraStatus.textContent !== cameraNote) perspectiveCameraStatus.textContent = cameraNote;
+      perspectiveCameraStatus.hidden = !cameraNote;
       showStatus();
       checkSheetContrast();
     } catch (error) {
@@ -1180,20 +1240,22 @@ const openDrawingWorkspace = (() => {
   const sheetTitle = () => $('drawingTitle').value.trim() || sourceModel.name;
   function showStatus() {
     if (!loading.hidden) return;
-    status.textContent = placing
-      ? 'Click the drawing to place the selected plane.'
-      : rendered?.cropped
-        ? allPlans()
-          ? 'Some plans extend past their panels. Use Fit to scale the set.'
-          : 'Drawing extends past the sheet. Drag to choose the part to export.'
-        : exportButton.disabled
-          ? 'No printable geometry is visible on this sheet.'
-          : allPlans()
-            ? 'Floor plans share a drawing scale.'
-            : base && settings.scale !== 'auto' && !settings.placement.center &&
-                (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
-              ? 'Using the captured 3D framing. Drag the drawing or use the arrow keys to pan the sheet.'
-              : 'Drag the drawing or use the arrow keys to reposition it.';
+    if (placing) {
+      status.textContent = placing === 'eye' ? 'Click the sheet to place the vanishing point.' : 'Click the drawing to place the selected plane.';
+      return;
+    }
+    status.textContent = rendered?.cropped
+      ? allPlans()
+        ? 'Some plans extend past their panels. Use Fit to scale the set.'
+        : 'Drawing extends past the sheet. Drag to choose the part to export.'
+      : exportButton.disabled
+        ? 'No printable geometry is visible on this sheet.'
+        : allPlans()
+          ? 'Floor plans share a drawing scale.'
+          : base && settings.scale !== 'auto' && !settings.placement.center &&
+              (settings.view === 'nav' || (settings.view !== 'aligned' && settings.orbitLocked))
+            ? 'Using the captured 3D framing. Drag the drawing or use the arrow keys to pan the sheet.'
+            : 'Drag the drawing or use the arrow keys to reposition it.';
   }
   function setDrawingOutputAvailable(available) {
     exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = expandButton.disabled = !available;
@@ -1234,11 +1296,13 @@ const openDrawingWorkspace = (() => {
       offset: planeHeight(plane)
     }));
   }
-  function stopPlacing() {
-    placing = false;
-    $('placeDrawingPlane').setAttribute('aria-pressed', 'false');
-    sheet.dataset.placing = 'false';
+  function setPlacementMode(mode) {
+    placing = mode;
+    $('placeDrawingPlane').setAttribute('aria-pressed', String(mode === 'plane'));
+    $('placePerspectiveOrigin').setAttribute('aria-pressed', String(mode === 'eye'));
+    sheet.dataset.placing = String(Boolean(mode));
   }
+  function stopPlacing() { setPlacementMode(null); }
   const detailPenControls = Object.entries(DRAWING_DETAIL_PENS).map(([key, { id, label, help }]) => {
     const row = document.createElement('div'),
       toggleLabel = document.createElement('label'),
@@ -1804,15 +1868,13 @@ const openDrawingWorkspace = (() => {
     selectSheetView('aligned');
     $('drawingSectionProjection').focus();
   };
-  $('placeDrawingPlane').onclick = () => {
-    placing = !placing;
-    $('placeDrawingPlane').setAttribute('aria-pressed', String(placing));
-    sheet.dataset.placing = String(placing);
-    if (placing) {
-      sheet.focus({ preventScroll: true });
-    }
+  function togglePlacement(mode) {
+    setPlacementMode(placing === mode ? null : mode);
+    if (placing) sheet.focus({ preventScroll: true });
     showStatus();
-  };
+  }
+  $('placeDrawingPlane').onclick = () => togglePlacement('plane');
+  $('placePerspectiveOrigin').onclick = () => togglePlacement('eye');
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && placing) {
       stopPlacing();
@@ -1868,6 +1930,12 @@ const openDrawingWorkspace = (() => {
   sheet.addEventListener('click', (event) => {
     if (!placing || !rendered || !loading.hidden) return;
     const point = sheetPoint(event);
+    if (placing === 'eye') {
+      const { width, height } = sheet.viewBox.baseVal;
+      stopPlacing();
+      setPerspectivePoint([point.x / width, point.y / height]);
+      return;
+    }
     const { basis, width, height, depth, scale, originX, originY, optics } = rendered;
     if (point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) return;
     const z = depth[Math.floor(point.y) * width + Math.floor(point.x)],
@@ -2149,6 +2217,7 @@ const openDrawingWorkspace = (() => {
       titleFields[1].value = titleFields[2].value = '';
       settings.planSheet = 'single';
       settings.viewHeadings = {};
+      settings.sectionCamera = null;
       if (model.defaultStoreyHeight) settings.storey = model.defaultStoreyHeight;
       if (project) restoreProjectDrawings(project);
       else {

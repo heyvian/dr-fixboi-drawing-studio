@@ -319,6 +319,8 @@
 .inspector-pane .depth-percent input { width: 62px; }
 .inspector-pane #drawingPlanes:empty { display: none; }
 .cut-projection { border-block-start: 1px solid #b9aebd; padding-block-start: 9px; }
+.perspective-position { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+#placePerspectiveOrigin[aria-pressed='true'] { background: #e6d9ed; border-color: var(--accent); }
 .sheet-contrast p { margin-block: 0; }
 .sheet-contrast button { min-height: 34px; }
 .sheet-contrast ul { margin-block: 0; padding-inline-start: 20px; }

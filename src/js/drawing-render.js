@@ -80,6 +80,17 @@ function sectionLensProjection(cutDepth, focalDistance, centerX, centerY) {
   };
 }
 
+function capturedSectionEye(camera, lens, basis, cutDepth) {
+  if (!camera) return null;
+  // Model space is orthographic. Use the lens and the captured viewport width to place a finite
+  // eye on its viewing axis, then express that eye in the cut plane's coordinate system.
+  const distance = camera.halfWidth * lens / 18;
+  const eye = orbitBasis(camera).back.map((axis, i) => camera.target[i] + axis * distance);
+  const depth = dot(eye, basis.back);
+  if (depth - cutDepth <= 1e-6) return null;
+  return [dot(eye, basis.right), -dot(eye, basis.up), depth];
+}
+
 function collectSectionContour(triangle, plane, contours, group) {
   const distances = triangle.map((point) => drawingDistance(point, plane));
   let start, end;
@@ -248,12 +259,19 @@ function renderDrawing(
   const alignedPlane = clips[sectionView?.planeIndex];
   const cutPlane = alignedPlane?.z > 0.999999 ? alignedPlane : null;
   const cutDepth = cutPlane ? cutPlane.level / cutPlane.z : 0;
-  const lensY = sectionView?.eyeLevel == null ? midY : clamp(-sectionView.eyeLevel, bounds.top, bounds.bottom);
-  // Calibrate the full-frame lens at Auto fit, independently of the selected print scale.
-  const focalDistance = (sectionView?.lens ?? 0) * (width - 2 * margin) * fittedDenominator / (36 * 1000 * pixelsPerMillimetre);
-  const optics = cutPlane && focalDistance
-    ? sectionLensProjection(cutDepth, focalDistance, originX + midX * scale, originY + lensY * scale)
-    : null;
+  let optics = null, eye = null, perspectiveCameraFallback = false;
+  if (cutPlane && sectionView.lens > 0) {
+    const cameraEye = sectionView.useCamera ? capturedSectionEye(sectionView.camera, sectionView.lens, basis, cutDepth) : null;
+    perspectiveCameraFallback = sectionView.useCamera === true && !cameraEye;
+    // In sheet mode the vanishing point stays anchored to the paper when the drawing is panned.
+    // Calibrate the lens at Auto fit so the perspective is independent of the printed scale.
+    const [left, top] = sectionView.sheetPoint ?? [0.5, 0.5];
+    const sheetX = paper.width * DRAWING_PIXELS_PER_INCH * left;
+    const sheetY = paper.height * DRAWING_PIXELS_PER_INCH * top;
+    const distance = sectionView.lens * (width - 2 * margin) * fittedDenominator / (36 * 1000 * pixelsPerMillimetre);
+    eye = cameraEye ?? [(sheetX - originX) / scale, (sheetY - originY) / scale, cutDepth + distance];
+    optics = sectionLensProjection(cutDepth, eye[2] - cutDepth, originX + eye[0] * scale, originY + eye[1] * scale);
+  }
   const treatment = sectionView?.cutTreatment ?? 'none';
   const contours = cutPlane && treatment !== 'none' ? new Map() : null;
   for (const face of geometry.faces) {
@@ -378,8 +396,8 @@ function renderDrawing(
   for (const { start, end, faces } of geometry.edges) {
     const first = faces[0];
     const [x, y, z] = raw[start];
-    const towardLens = optics
-      ? back.map((axis, i) => axis * (cutDepth + focalDistance - z) + right[i] * (midX - x) + up[i] * (y - lensY))
+    const towardLens = eye
+      ? back.map((axis, i) => axis * (eye[2] - z) + right[i] * (eye[0] - x) + up[i] * (y - eye[1]))
       : back;
     const facing = dot(first.normal, towardLens);
     const open = faces.length === 1,
@@ -483,6 +501,7 @@ function renderDrawing(
     midY,
     depth,
     optics,
+    perspectiveCameraFallback,
     wash,
     exportFills: paint
       ? () => drawingExportFills(geometry, projected, seeThrough, clips, sheetEdges, width, height, sun, rendering === 'flat', optics)

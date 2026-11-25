@@ -57,13 +57,13 @@ const points = [
 const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
   .flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]])
   .map((vertices) => ({ vertices, body: 1, cutGroup: 0, glazing: false }));
-function drawSection(lens, horizontal = false, cutTreatment = 'solid', denominator = 50) {
+function drawSection(lens, horizontal = false, cutTreatment = 'solid', denominator = 50, origin = {}, pan = [0, 0]) {
   return renderDrawing(
     { points, faces, lines: [{ a: 8, b: 9, component: 'Curve' }], edges: [] },
     { az: Math.PI / 2, el: horizontal ? Math.PI / 2 : 0 },
     [horizontal ? { normal: [0, 1, 0], offset: 1.5 } : { normal: [0, 0, 1], offset: 0 }],
-    { width: 11, height: 8.5 }, denominator, false, { x: 0, y: 0, ground: false, center: true },
-    'linework', drawingPens({ widths: [0.5] }), null, null, { planeIndex: 0, lens, cutTreatment, hatchSpacing: 2 }
+    { width: 11, height: 8.5 }, denominator, false, { x: pan[0], y: pan[1], ground: false, center: true },
+    'linework', drawingPens({ widths: [0.5] }), null, null, { planeIndex: 0, lens, cutTreatment, hatchSpacing: 2, ...origin }
   );
 }
 const orthographic = drawSection(0);
@@ -77,6 +77,30 @@ assert.equal(wideAngle.cutFills[0], orthographic.cutFills[0]);
 assert.match(wideAngle.cutFills[0], /^M.*Z$/);
 assert(drawSection(35, true).perspective, 'horizontal cuts support plan perspective');
 assert.equal(orthographic.cutHatch, '', 'a solid fill has no hatch strokes');
+
+const closePoint = (actual, expected) => actual.forEach((value, i) => assert(Math.abs(value - expected[i]) < 1e-5));
+const convergence = (frame) => frame.optics.project([100, 100, -1e9]).slice(0, 2);
+closePoint(convergence(wideAngle), [11 * 88 / 2, 8.5 * 88 / 2]);
+const sheetPoint = [0.3, 0.2];
+const placedEye = drawSection(35, false, 'solid', 50, { sheetPoint });
+const pannedEye = drawSection(35, false, 'solid', 50, { sheetPoint }, [10, -20]);
+closePoint(convergence(placedEye), [11 * 88 * sheetPoint[0], 8.5 * 88 * sheetPoint[1]]);
+closePoint(convergence(pannedEye), convergence(placedEye));
+assert.equal(placedEye.section, orthographic.section);
+assert.equal(placedEye.cutFills[0], orthographic.cutFills[0]);
+
+const camera = { az: Math.PI / 2, el: 0, target: [1, 2, 2], halfWidth: 1.8, halfHeight: 1.4 };
+const cameraEye = drawSection(35, false, 'solid', 50, { useCamera: true, camera });
+const [eyeX, eyeY] = [cameraEye.originX + cameraEye.scale, cameraEye.originY - 2 * cameraEye.scale];
+closePoint(convergence(cameraEye), [eyeX, eyeY]);
+const projected = cameraEye.optics.project([eyeX + 100, eyeY + 50, -5.5]);
+closePoint(projected, [eyeX + 50, eyeY + 25, -2.75]);
+closePoint(cameraEye.optics.unproject(projected), [eyeX + 100, eyeY + 50, -5.5]);
+assert.equal(cameraEye.section, orthographic.section);
+assert.equal(cameraEye.perspectiveCameraFallback, false);
+const backCamera = drawSection(35, false, 'solid', 50, { useCamera: true, camera: { ...camera, az: Math.PI * 1.5 }, sheetPoint });
+assert.equal(backCamera.perspectiveCameraFallback, true);
+closePoint(convergence(backCamera), convergence(placedEye));
 
 function hatchStrokes(path) {
   return path.split('M').filter(Boolean).map((line) => line.split('L').map((point) => point.split(' ').map(Number)));
