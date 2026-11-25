@@ -13,6 +13,7 @@ const openDrawingWorkspace = (() => {
     confirmSvgExport = $('confirmSvgExport'),
     bluebeamButton = $('exportBluebeam'),
     printButton = $('printDrawing'),
+    expandButton = $('expandDrawing'),
     storageKey = 'poly-nation-drawings-standalone-v1',
     svgNS = 'http://www.w3.org/2000/svg',
     layerNS = 'http://www.inkscape.org/namespaces/inkscape',
@@ -379,6 +380,61 @@ const openDrawingWorkspace = (() => {
     sheet.style.setProperty('--drawing-paper-width', width + 'in');
     sheet.style.setProperty('--drawing-paper-height', height + 'in');
   }
+
+  const previewDialog = $('sheetPreviewDialog'), previewViewport = $('sheetPreviewViewport'),
+    previewContent = $('sheetPreviewContent'), previewZoomOut = $('sheetPreviewZoomOut'), previewZoomIn = $('sheetPreviewZoomIn');
+  let previewZoom = 1;
+  function resizeExpandedSheet(zoom = previewZoom) {
+    if (!previewDialog.open) return;
+    const page = previewContent.firstElementChild;
+    const { width, height } = page.viewBox.baseVal;
+    const viewport = previewViewport.getBoundingClientRect(), before = page.getBoundingClientRect();
+    const css = getComputedStyle(previewContent);
+    const paddingX = parseFloat(css.paddingLeft) + parseFloat(css.paddingRight);
+    const paddingY = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
+    const fit = Math.min((previewViewport.clientWidth - paddingX) / width, (viewport.height - paddingY) / height);
+    if (!(fit > 0)) return;
+    const centerX = viewport.left + viewport.width / 2, centerY = viewport.top + viewport.height / 2;
+    const x = clamp((centerX - before.left) / before.width, 0, 1);
+    const y = clamp((centerY - before.top) / before.height, 0, 1);
+    previewZoom = clamp(zoom, 1, 4);
+    page.style.width = `${width * fit * previewZoom}px`;
+    page.style.height = `${height * fit * previewZoom}px`;
+    const after = page.getBoundingClientRect();
+    previewViewport.scrollLeft += after.left + after.width * x - centerX;
+    previewViewport.scrollTop += after.top + after.height * y - centerY;
+    $('sheetPreviewZoom').value = `${Math.round(previewZoom * 100)}%`;
+    previewZoomOut.setAttribute('aria-disabled', String(previewZoom === 1));
+    previewZoomIn.setAttribute('aria-disabled', String(previewZoom === 4));
+  }
+  expandButton.onclick = () => {
+    // Copy the live sheet so preview scrolling and zoom never edit the working sheet.
+    const page = sheet.cloneNode(true);
+    for (const attribute of ['id', 'style', 'tabindex', 'aria-describedby', 'data-dragging', 'data-placing'])
+      page.removeAttribute(attribute);
+    page.setAttribute('class', 'expanded-sheet-page');
+    for (const item of page.querySelectorAll('[id]')) item.removeAttribute('id');
+    page.querySelector('clipPath').id = 'expandedSheetClip';
+    page.querySelector(`[clip-path="url(#${clip.id})"]`).setAttribute('clip-path', 'url(#expandedSheetClip)');
+    previewContent.replaceChildren(page);
+    $('sheetPreviewContext').textContent = `${sheetTitle()} · ${$('sheetViewContext').textContent}`;
+    previewDialog.showModal();
+    resizeExpandedSheet(1);
+    previewViewport.scrollTo(0, 0);
+  };
+  $('closeSheetPreview').onclick = () => previewDialog.close();
+  previewDialog.onclose = () => previewContent.replaceChildren();
+  previewZoomOut.onclick = () => resizeExpandedSheet(previewZoom - 0.5);
+  previewZoomIn.onclick = () => resizeExpandedSheet(previewZoom + 0.5);
+  $('sheetPreviewFit').onclick = () => resizeExpandedSheet(1);
+  previewViewport.onkeydown = (event) => {
+    const value = { '+': previewZoom + 0.5, '=': previewZoom + 0.5, '-': previewZoom - 0.5, '0': 1 }[event.key];
+    if (value === undefined || event.ctrlKey || event.metaKey || event.altKey) return;
+    event.preventDefault();
+    resizeExpandedSheet(value);
+  };
+  new ResizeObserver(() => resizeExpandedSheet()).observe(previewViewport);
+
   function saveDrawing() {
     try {
       localStorage.setItem(storageKey, JSON.stringify(settings));
@@ -1104,7 +1160,7 @@ const openDrawingWorkspace = (() => {
               : 'Drag the drawing or use the arrow keys to reposition it.';
   }
   function setDrawingOutputAvailable(available) {
-    exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = !available;
+    exportButton.disabled = confirmSvgExport.disabled = printButton.disabled = expandButton.disabled = !available;
     bluebeamButton.disabled = !available || exportingPdf;
   }
   function queueDrawing() {

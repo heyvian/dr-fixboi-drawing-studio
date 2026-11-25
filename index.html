@@ -66,7 +66,7 @@
         <span class="registration-mark" aria-hidden="true"></span>
         <div>
           <h1 aria-label="Dr. FixBoi®’s Drawing Studio">Dr. FixBoi<sup>®</sup>’s</h1>
-          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.1.0</span></p>
+          <p class="sub">Drawing studio <span class="app-version" id="appVersion">V2.2.0</span></p>
         </div>
       </div>
     </header>
@@ -163,10 +163,13 @@
         <div class="drawing-stage" id="drawingStage" role="region" aria-labelledby="drawingSheetTitle" hidden>
           <div class="stage-header">
             <div class="stage-title"><h2 id="drawingSheetTitle">Drawing sheet</h2><span id="sheetViewContext"></span></div>
-            <div class="toolbar-group export-tools desktop-edit" role="group" aria-label="Export and print">
-              <button type="button" class="primary" id="exportDrawing" aria-haspopup="dialog" disabled>Export SVG</button>
-              <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
-              <button type="button" id="printDrawing" title="Print the current sheet or save it as a vector PDF" disabled>Print / PDF</button>
+            <div class="stage-actions">
+              <button type="button" id="expandDrawing" aria-haspopup="dialog" disabled>Expand sheet</button>
+              <div class="toolbar-group export-tools desktop-edit" role="group" aria-label="Export and print">
+                <button type="button" class="primary" id="exportDrawing" aria-haspopup="dialog" disabled>Export SVG</button>
+                <button type="button" id="exportBluebeam" title="Download the current sheet as a vector PDF for Bluebeam Revu" disabled>PDF for Bluebeam</button>
+                <button type="button" id="printDrawing" title="Print the current sheet or save it as a vector PDF" disabled>Print / PDF</button>
+              </div>
             </div>
           </div>
           <div class="drawing-toolbar sheet-toolbar">
@@ -511,6 +514,23 @@
       </section>
     </main>
     <div id="drawingPrintPages" aria-hidden="true"></div>
+    <dialog id="sheetPreviewDialog" aria-labelledby="sheetPreviewTitle">
+      <header class="sheet-preview-header">
+        <div class="stage-title"><h2 id="sheetPreviewTitle">Sheet preview</h2><span id="sheetPreviewContext"></span></div>
+        <div class="stage-actions">
+          <div class="sheet-preview-tools" role="group" aria-label="Preview zoom">
+            <button type="button" id="sheetPreviewZoomOut" aria-label="Zoom out" aria-disabled="true">−</button>
+            <output id="sheetPreviewZoom" aria-label="Zoom relative to fit">100%</output>
+            <button type="button" id="sheetPreviewZoomIn" aria-label="Zoom in">+</button>
+            <button type="button" id="sheetPreviewFit" aria-label="Fit sheet to preview">Fit</button>
+          </div>
+          <button type="button" id="closeSheetPreview" autofocus>Close</button>
+        </div>
+      </header>
+      <div id="sheetPreviewViewport" role="region" aria-label="Scrollable sheet preview" tabindex="0">
+        <div id="sheetPreviewContent"></div>
+      </div>
+    </dialog>
     <dialog id="savedViewDialog" aria-labelledby="savedViewDialogTitle">
       <form id="savedViewForm" method="dialog">
         <h2 id="savedViewDialogTitle">Save drawing view</h2>

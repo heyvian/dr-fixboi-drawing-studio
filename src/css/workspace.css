@@ -141,6 +141,7 @@
 .stage-title h2 { margin: 0; font-size: 17px; line-height: 1.15; font-weight: 800; }
 .stage-title span { color: #5d4866; font: 11px/1.2 var(--mono); }
 .stage-title span:empty { display: none; }
+.stage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .drawing-stage .stage-header .export-tools { align-items: center; border: 0; padding: 0; }
 .drawing-stage .stage-header .export-tools button { min-height: 32px; }
 .drawing-workspace :is(.drawing-stage, .nav-stage) .drawing-toolbar {
@@ -179,6 +180,52 @@
   line-height: 1.35;
 }
 .mobile-view-note { display: none; }
+
+#sheetPreviewDialog {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--workbench);
+  color: var(--ink);
+}
+#sheetPreviewDialog[open] { display: flex; flex-direction: column; }
+.sheet-preview-header {
+  display: flex;
+  flex-wrap: wrap;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 9px 13px;
+  background: #f4f0ec;
+  border-bottom: 1px solid #a394ac;
+}
+.sheet-preview-header .stage-title { min-width: 0; overflow-wrap: anywhere; }
+.sheet-preview-tools { display: flex; align-items: center; gap: 4px; }
+.sheet-preview-tools output { min-width: 5ch; text-align: center; font: 700 12px var(--mono); }
+.sheet-preview-tools button { min-width: 34px; }
+.sheet-preview-tools [aria-disabled='true'] { background: #e7e0e9; color: #615866; cursor: default; }
+#sheetPreviewViewport { flex: auto; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges; }
+#sheetPreviewViewport:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
+#sheetPreviewContent {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  height: max-content;
+  padding: 12px;
+}
+.expanded-sheet-page { flex: none; display: block; margin: auto; box-shadow: 0 2px 12px #24211b45; }
+
+@media print { #sheetPreviewDialog { display: none !important; } }
 
 .inspector-tabs {
   display: flex;

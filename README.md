@@ -16,6 +16,8 @@ Run `npm ci && npm run serve` and visit http://localhost:8080. The app has no bu
 6. In the **Project browser**, choose **Save as…** to create a named sheet view with its framing, visible layers, clipping planes, pens and sheet setup. Select a view and choose **Open view**, double-click it or press Enter on the row. **Update** replaces its saved settings, and **Rename** changes its name. **Delete** asks for confirmation.
 7. Use **Export SVG** for Illustrator, **PDF for Bluebeam** to download the current sheet as a vector PDF, or **Print / PDF** to print the same vector artwork. In Plan, **Paper → Print floor set** prints one vector sheet per floor at a shared scale. Choose **Actual size** or **100%** in the print dialog to keep that scale.
 
+Choose **Expand sheet** to inspect the current sheet in a full-window viewer. Zoom and scroll independently of the sheet’s print scale and placement. With the preview area focused, use **+** and **−** to zoom, **0** to fit, and **Escape** to close.
+
 On phones, open models, switch projections, and browse saved sheet views. Use a larger screen with a mouse and keyboard for drawing setup and export. The inspector tabs support arrow keys, Home and End. **Skip to viewport** appears at the start of the keyboard tab order after loading a model.
 
 Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the scale keeps whatever is at the centre of the sheet in place. The working sheet, named views and export preferences are stored in the current browser. Reopen the same model to continue. Your model file stays on your device.
