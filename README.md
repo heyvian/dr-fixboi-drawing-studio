@@ -26,7 +26,7 @@ Choose **Auto fit** or a fixed drawing scale from 1:1 to 1:5000. Changing the sc
 
 Use **Paper size → Custom size…** to save a named sheet in millimetres or inches. Custom sizes are available across models in the same browser and can be recalled with a saved view.
 
-To draw a perspective cut, add a vertical or horizontal clipping plane under **Cuts** and choose **Align view to plane**. Under **View**, choose **Section perspective** for a vertical cut or **Plan perspective** for a horizontal one. The cut keeps its printed scale and line weights. The 8–200 mm lens and **Lighten beyond cut** control the geometry that recedes behind it.
+To draw a perspective cut, add a vertical or horizontal clipping plane under **Cuts** and choose **Align view to plane**. In the projection control below **Align view to plane**, choose **Section perspective** for a vertical cut or **Plan perspective** for a horizontal one. The cut keeps its printed scale and line weights. The 8–200 mm lens and **Lighten beyond cut** control the geometry that recedes behind it.
 
 In **Cuts → Cut solids**, choose **Solid fill**, **Diagonal hatch**, or **Crosshatch** for the cut faces of a plan or section viewed straight on, including a perspective cut. The colour applies to the fill or hatch. Hatch spacing is measured in printed millimetres and holds across drawing scales. Openings stay clear. The hatch strokes and their paper-coloured backing export as separate layers, so you can edit either in Illustrator. Cut and lens settings are saved with the view and carried through SVG, PDF, and print.
 

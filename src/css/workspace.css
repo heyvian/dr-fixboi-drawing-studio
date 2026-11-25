@@ -309,6 +309,7 @@
 .inspector-pane .depth-adjust:not([open]) { display: block; }
 .inspector-pane .depth-adjust summary { margin-bottom: 4px; }
 .inspector-pane #drawingPlanes:empty { display: none; }
+.cut-projection { border-block-start: 1px solid #b9aebd; padding-block-start: 9px; }
 .sheet-contrast p { margin-block: 0; }
 .sheet-contrast button { min-height: 34px; }
 .sheet-contrast ul { margin-block: 0; padding-inline-start: 20px; }

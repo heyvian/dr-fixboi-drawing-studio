@@ -513,8 +513,12 @@ const openDrawingWorkspace = (() => {
   const compass = $('drawingCompass');
   const orientationStatus = $('orientationStatus');
   const sheetViewButtons = [...$('sheetViews').querySelectorAll('[data-sheet-view]')];
-  for (const button of sheetViewButtons)
-    button.onclick = () => selectSheetView(button.dataset.sheetView, true);
+  for (const button of sheetViewButtons) {
+    button.onclick = () => {
+      selectSheetView(button.dataset.sheetView, true);
+      if (button.dataset.sheetView === 'aligned') selectInspectorTab($('clipMenuToggle'));
+    };
+  }
   const showHeading = createViewCompass(compass, (heading) => {
     settings.viewHeadings[settings.view] = heading;
     orientationStatus.hidden = true;
@@ -569,7 +573,9 @@ const openDrawingWorkspace = (() => {
   function syncSectionControls() {
     const plane = currentPlane();
     const kind = plane?.axis === 'horizontal' ? 'Plan' : 'Section';
-    $('drawingSectionView').hidden = settings.view !== 'aligned' || !plane;
+    const aligned = settings.view === 'aligned' && Boolean(plane);
+    $('drawingSectionView').hidden = !aligned;
+    $('drawingCutProjectionHint').hidden = aligned;
     $('drawingProjectionTitle').textContent = `${kind} projection`;
     sectionProjection.options[1].text = `${kind} perspective`;
     sectionProjection.value = settings.sectionProjection;
@@ -1761,7 +1767,7 @@ const openDrawingWorkspace = (() => {
   };
   $('alignDrawingPlane').onclick = () => {
     selectSheetView('aligned');
-    selectInspectorTab($('viewTab'), true);
+    $('drawingSectionProjection').focus();
   };
   $('placeDrawingPlane').onclick = () => {
     placing = !placing;
