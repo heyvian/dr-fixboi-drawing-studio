@@ -81,7 +81,12 @@ const openDrawingWorkspace = (() => {
   markSvgLayer(footer, 'Title and scale');
   content.append(sheetArtwork, floorTiles);
   drawingArea.append(content);
-  sheet.append(clip, paperLayer, drawingArea, footer);
+  const perspectiveMarker = svgElement('g', { id: 'perspectiveOriginMarker', display: 'none', 'aria-hidden': 'true', 'pointer-events': 'none' });
+  for (const [stroke, width] of [['#ffffff', 4], ['#53326f', 2]]) {
+    const pen = { stroke, 'stroke-width': width, 'vector-effect': 'non-scaling-stroke' };
+    perspectiveMarker.append(svgElement('line', { x1: -11, x2: 11, ...pen }), svgElement('line', { y1: -11, y2: 11, ...pen }));
+  }
+  sheet.append(clip, paperLayer, drawingArea, footer, perspectiveMarker);
   document.head.append(pageStyle);
   for (const scale of DRAWING_SCALES)
     $('drawingScale').add(new Option(`1:${scale}`, String(scale)));
@@ -136,6 +141,7 @@ const openDrawingWorkspace = (() => {
     printingFloorSet = false,
     exportingPdf = false,
     placing = null,
+    perspectivePickPoint = null,
     drag = null;
   function readDrawingSettings(saved) {
     const previousElevation = ['front', 'side'].includes(saved.view);
@@ -448,6 +454,7 @@ const openDrawingWorkspace = (() => {
   expandButton.onclick = () => {
     // Copy the live sheet so preview scrolling and zoom never edit the working sheet.
     const page = sheet.cloneNode(true);
+    page.querySelector('#perspectiveOriginMarker').remove();
     for (const attribute of ['id', 'style', 'tabindex', 'aria-describedby', 'data-dragging', 'data-placing'])
       page.removeAttribute(attribute);
     page.setAttribute('class', 'expanded-sheet-page');
@@ -567,8 +574,7 @@ const openDrawingWorkspace = (() => {
   };
 
   const sectionProjection = $('drawingSectionProjection'), lensSlider = $('drawingSectionLens');
-  const perspectiveOrigin = $('drawingPerspectiveOrigin'), perspectiveCameraStatus = $('drawingPerspectiveCameraStatus'),
-    perspectiveCoordinates = [$('drawingPerspectiveLeft'), $('drawingPerspectiveTop')];
+  const perspectiveOrigin = $('drawingPerspectiveOrigin'), perspectiveCameraStatus = $('drawingPerspectiveCameraStatus');
   const lensPosition = (mm) => Math.round(1000 * Math.log(mm / 8) / Math.log(200 / 8));
   const lensMillimetres = (position) => Math.round(8 * (200 / 8) ** (position / 1000));
   const lensStops = [8, 14, 20, 24, 28, 35, 50, 85, 105, 135, 200];
@@ -603,11 +609,9 @@ const openDrawingWorkspace = (() => {
     $('drawingPerspectiveSheet').hidden = useCamera;
     $('drawingPerspectiveCamera').hidden = !useCamera;
     $('capturePerspectiveCamera').disabled = !viewer.ok;
-    perspectiveCoordinates.forEach((input, i) => { input.value = Math.round(settings.sectionPoint[i] * 1000) / 10; });
   }
   function setPerspectivePoint(position) {
     settings.sectionPoint = position.map((value) => Math.round(clamp(value, 0, 1) * 1000) / 1000);
-    syncPerspectiveOrigin();
     queueDrawing();
   }
   perspectiveOrigin.onchange = (event) => {
@@ -626,18 +630,6 @@ const openDrawingWorkspace = (() => {
     stopPlacing();
     setPerspectivePoint([0.5, 0.5]);
   };
-  perspectiveCoordinates.forEach((input, i) => {
-    input.onchange = () => {
-      if (!Number.isFinite(input.valueAsNumber)) {
-        syncPerspectiveOrigin();
-        return;
-      }
-      stopPlacing();
-      const point = settings.sectionPoint.slice();
-      point[i] = input.valueAsNumber / 100;
-      setPerspectivePoint(point);
-    };
-  });
   function facingCutIndex(camera, planes) {
     const { back } = orbitBasis(camera);
     let index = -1, cutLimit = Infinity;
@@ -1192,6 +1184,7 @@ const openDrawingWorkspace = (() => {
       const pageWidth = paper.width * DRAWING_PIXELS_PER_INCH,
         pageHeight = paper.height * DRAWING_PIXELS_PER_INCH;
       sheet.setAttribute('viewBox', `0 0 ${pageWidth} ${pageHeight}`);
+      updatePerspectiveMarker();
       clipRect.setAttribute('x', margin);
       clipRect.setAttribute('y', margin);
       clipRect.setAttribute('width', width - margin * 2);
@@ -1241,7 +1234,9 @@ const openDrawingWorkspace = (() => {
   function showStatus() {
     if (!loading.hidden) return;
     if (placing) {
-      status.textContent = placing === 'eye' ? 'Click the sheet to place the vanishing point.' : 'Click the drawing to place the selected plane.';
+      status.textContent = placing === 'eye'
+        ? 'Click to place the point, or move it with the arrow keys and press Enter.'
+        : 'Click the drawing to place the selected plane.';
       return;
     }
     status.textContent = rendered?.cropped
@@ -1298,11 +1293,21 @@ const openDrawingWorkspace = (() => {
   }
   function setPlacementMode(mode) {
     placing = mode;
+    perspectivePickPoint = mode === 'eye' ? [...settings.sectionPoint] : null;
     $('placeDrawingPlane').setAttribute('aria-pressed', String(mode === 'plane'));
     $('placePerspectiveOrigin').setAttribute('aria-pressed', String(mode === 'eye'));
     sheet.dataset.placing = String(Boolean(mode));
+    updatePerspectiveMarker();
   }
   function stopPlacing() { setPlacementMode(null); }
+  function updatePerspectiveMarker() {
+    perspectiveMarker.setAttribute('display', perspectivePickPoint ? 'inline' : 'none');
+    if (perspectivePickPoint) {
+      const [left, top] = perspectivePickPoint;
+      const { width, height } = sheet.viewBox.baseVal;
+      perspectiveMarker.setAttribute('transform', `translate(${left * width} ${top * height})`);
+    }
+  }
   const detailPenControls = Object.entries(DRAWING_DETAIL_PENS).map(([key, { id, label, help }]) => {
     const row = document.createElement('div'),
       toggleLabel = document.createElement('label'),
@@ -1895,6 +1900,20 @@ const openDrawingWorkspace = (() => {
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[
       event.key
     ];
+    if (placing === 'eye') {
+      if (delta) {
+        event.preventDefault();
+        const step = event.shiftKey ? 0.05 : 0.01;
+        perspectivePickPoint = perspectivePickPoint.map((value, i) => clamp(value + delta[i] * step, 0, 1));
+        updatePerspectiveMarker();
+      } else if (event.key === 'Enter' && rendered && loading.hidden) {
+        event.preventDefault();
+        const point = perspectivePickPoint;
+        stopPlacing();
+        setPerspectivePoint(point);
+      }
+      return;
+    }
     if (!delta || placing || allPlans()) return;
     event.preventDefault();
     const step = event.shiftKey ? 10 : 2;
